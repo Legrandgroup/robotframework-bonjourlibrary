@@ -452,12 +452,6 @@ class BonjourLibrary:
         self._avahi_daemon_exec_path = avahi_daemon_exec_path
         self._browser = None
 
-    def _reconnect(self):
-        """ reconnect can connect if debug was stop or restarted and flush ingoing message """
-
-        self._browser.unconnect()
-        self._browser.connect()
-
     def _browse_generic(self, stype):
         """ connect to DBus, reset database and browse service """
  
