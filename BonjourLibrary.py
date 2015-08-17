@@ -125,6 +125,96 @@ value:%s
             mac_product = '0d9cf0'  # FIXME
             return [apname, mac_product, where]
 
+class AvahiBrowser:
+    
+    def __init__(self, bus, dbus_iface, service_type, finished_event = None, domain = 'local'):
+        self.bus = bus
+        self.dbus_iface = dbus_iface
+        self.service_type = service_type
+        self.domain = domain
+        self.finished_event = finished_event
+        self.service_database = ServiceDatabase()
+        
+        logger.debug('Starting a new service browser on domain=' + str(self.domain) + ', service type=' + str(self.service_type))
+        browser_path = self.dbus_iface.ServiceBrowserNew(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, self.service_type, self.domain, dbus.UInt32(0))
+        browser_proxy = self.bus.get_object(avahi.DBUS_NAME, browser_path)
+        browser_interface = dbus.Interface(browser_proxy, avahi.DBUS_INTERFACE_SERVICE_BROWSER)
+        browser_interface.connect_to_signal('AllForNow', self._serviceBrowserDone)
+        browser_interface.connect_to_signal('CacheExhausted', self._serviceBrowserCache)
+        browser_interface.connect_to_signal('Failure', self._serviceBrowserFailure)
+        browser_interface.connect_to_signal('Free', self._serviceBrowserFree)
+        browser_interface.connect_to_signal('ItemNew', self._serviceBrowserItemAdded)
+        browser_interface.connect_to_signal('ItemRemove', self._serviceBrowserItemRemoved)
+
+    def _serviceBrowserItemAdded(
+        self,
+        interface,
+        protocol,
+        name,
+        stype,
+        domain,
+        flags,
+        ):
+        """ add a Bonjour service in database """
+
+        logger.debug('Avahi:ItemNew')
+        temp = self.dbus_iface.ResolveService(
+            interface,
+            protocol,
+            name,
+            stype,
+            domain,
+            avahi.PROTO_UNSPEC,
+            dbus.UInt32(0),
+            )
+        self.service_database.add(temp)
+
+    def _serviceBrowserItemRemoved(
+        self,
+        interface,
+        protocol,
+        name,
+        stype,
+        domain,
+        flags,
+        ):
+        """ remove a Bonjour service in database """
+
+        logger.debug('Avahi:ItemRemove')
+        key = (interface, protocol, name, stype, domain)
+        self.service_database.remove(key)
+
+    def _serviceBrowserDone(self):
+        """ no more Bonjour service """
+
+        logger.debug('Avahi:AllForNow')
+        if not self.finished_event is None:
+            self.finished_event.set()
+
+    def _serviceBrowserFailure(self, error):
+        """ avahi failure """
+
+        logger.debug('Avahi:Failure')
+        logger.warn('Error %s' % error)
+        if not self.finished_event is None:
+            self.finished_event.set()
+
+    @staticmethod
+    def _serviceBrowserFree():
+        """ free """
+
+        logger.debug('Avahi:Free')
+
+    @staticmethod
+    def _serviceBrowserCache():
+        """ cache """
+
+        logger.debug('Avahi:CacheExhausted')
+        
+    def get_service_database(self):
+        return self.service_database
+
+
 class AvahiWrapper:
 
     """ Bonjour service base on http://avahi.org/ """
@@ -329,88 +419,17 @@ class AvahiWrapper:
         try:
             with self._dbus_service_browser_lock:
                 self.pauseDBusLoop()    # We must pause the D-Bus background thread or we may miss the first results from the ServiceBrowser created below (because callbacks for signals are not yet in place)
-                print('Generating a new service browser on ' + self._domain + ', service type ' + str(stype))
-                browser_path = self._dbus_iface.ServiceBrowserNew(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, stype, self._domain, dbus.UInt32(0))
-                browser_proxy = self._bus.get_object(avahi.DBUS_NAME, browser_path)
-                #Got a browser proxy
-                print('Using ' + avahi.DBUS_INTERFACE_SERVICE_BROWSER)
-                browser_interface = dbus.Interface(browser_proxy, avahi.DBUS_INTERFACE_SERVICE_BROWSER)
-                browser_interface.connect_to_signal('AllForNow', self._serviceBrowserDone)
-                browser_interface.connect_to_signal('CacheExhausted', self._serviceBrowserCache)
-                browser_interface.connect_to_signal('Failure', self._serviceBrowserFailure)
-                browser_interface.connect_to_signal('Free', self._serviceBrowserFree)
-                browser_interface.connect_to_signal('ItemNew', self._serviceBrowserItemAdded)
-                browser_interface.connect_to_signal('ItemRemove', self._serviceBrowserItemRemoved)
                 self._dbus_service_browser_finished.clear()
+                
+                browser = AvahiBrowser(bus = self._bus, dbus_iface = self._dbus_iface, service_type = stype, finished_event = self._dbus_service_browser_finished)
+                
                 self.resumeDBusLoop()   # Now we are ready to process signals, resume the D-Bus background thread
-                self._dbus_service_browser_finished.wait(30)    # Give at most 30s to get all Bonjour devices 
+                self._dbus_service_browser_finished.wait(30)    # Give at most 30s to get all Bonjour devices
+                self.service_database = browser.get_service_database()
                 
         except:
             raise Exception("DBus exception occurs in browse_service_type with type '%s' and value '%s'" % sys.exc_info()[:2])
 
-    def _serviceBrowserItemAdded(
-        self,
-        interface,
-        protocol,
-        name,
-        stype,
-        domain,
-        flags,
-        ):
-        """ add a Bonjour service in database """
-
-        logger.debug('Avahi:ItemNew')
-        temp = self._dbus_iface.ResolveService(
-            interface,
-            protocol,
-            name,
-            stype,
-            domain,
-            avahi.PROTO_UNSPEC,
-            dbus.UInt32(0),
-            )
-        print('Got new service ' + str(temp))
-        self.service_database.add(temp)
-
-    def _serviceBrowserItemRemoved(
-        self,
-        interface,
-        protocol,
-        name,
-        stype,
-        domain,
-        flags,
-        ):
-        """ remove a Bonjour service in database """
-
-        logger.debug('Avahi:ItemRemove')
-        key = (interface, protocol, name, stype, domain)
-        self.service_database.remove(key)
-
-    def _serviceBrowserDone(self):
-        """ no more Bonjour service """
-
-        logger.debug('Avahi:AllForNow')
-        self._dbus_service_browser_finished.set()
-
-    def _serviceBrowserFailure(self, error):
-        """ avahi failure """
-
-        logger.debug('Avahi:Failure')
-        logger.warn('Error %s' % error)
-        self._dbus_service_browser_finished.set()
-
-    @staticmethod
-    def _serviceBrowserFree():
-        """ free """
-
-        logger.debug('Avahi:Free')
-
-    @staticmethod
-    def _serviceBrowserCache():
-        """ cache """
-
-        logger.debug('Avahi:CacheExhausted')
 
 
 class BonjourWrapper(AvahiWrapper):
@@ -442,7 +461,6 @@ class BonjourLibrary:
     def _browse_generic(self, stype):
         """ connect to DBus, reset database and browse service """
  
-        print('Entering _browse_generic()')
         self._browser.service_database.reset()
         self._browser.browse_service_type(stype)
         logger.debug('DBus loop ending with database:%s' % self._browser.service_database)
