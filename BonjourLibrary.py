@@ -125,7 +125,6 @@ value:%s
             mac_product = '0d9cf0'  # FIXME
             return [apname, mac_product, where]
 
-
 class AvahiWrapper:
 
     """ Bonjour service base on http://avahi.org/ """
@@ -310,31 +309,23 @@ class AvahiWrapper:
     def get_version(self):
         """ get version """
 
-        return _remote_version
+        return self._remote_version
 
     def get_interface_name(self, interface_index):
         """ get interface name from index """
 
-        if self._dbus_iface is None:
-            raise LegrandError('You need to connect before getting interface name')
-        else:
-            interface_name = self._dbus_iface.GetNetworkInterfaceNameByIndex(interface_index)
-            return interface_name
+        return self._dbus_iface.GetNetworkInterfaceNameByIndex(interface_index)
 
     def get_state(self):
         """ get state """
 
-        if self._dbus_iface is None:
-            raise LegrandError('You need to connect before getting interface name')
-        else:
-            state = self._dbus_iface.GetState()
-            return state
+        return self._dbus_iface.GetState()
 
     def browse_service_type(self, stype):
         """ browse service """
 
         if self._dbus_iface is None:
-            raise LegrandError('You need to connect before getting interface name')
+            raise Exception('You need to connect before getting interface name')
         try:
             with self._dbus_service_browser_lock:
                 self.pauseDBusLoop()    # We must pause the D-Bus background thread or we may miss the first results from the ServiceBrowser created below (because callbacks for signals are not yet in place)
