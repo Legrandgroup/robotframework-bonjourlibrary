@@ -160,22 +160,6 @@ class AvahiWrapper:
         self._dbus_iface = dbus.Interface(self._avahi_proxy, avahi.DBUS_INTERFACE_SERVER) # Required to invoke methods
         
         logger.debug("Connected to D-Bus")
-#         self._dnsmasq_proxy.connect_to_signal("DhcpLeaseAdded",
-#                                               self._handleDhcpLeaseAdded,
-#                                               dbus_interface = DnsmasqDhcpServerWrapper.DNSMASQ_DBUS_SERVICE_INTERFACE,
-#                                               message_keyword='dbus_message')   # Handle the IpConfigApplied signal
-# 
-#         self._dnsmasq_proxy.connect_to_signal("DhcpLeaseUpdated",
-#                                               self._handleDhcpLeaseUpdated,
-#                                               dbus_interface = DnsmasqDhcpServerWrapper.DNSMASQ_DBUS_SERVICE_INTERFACE,
-#                                               message_keyword='dbus_message')   # Handle the IpConfigApplied signal
-# 
-#         self._dnsmasq_proxy.connect_to_signal("DhcpLeaseDeleted",
-#                                               self._handleDhcpLeaseDeleted,
-#                                               dbus_interface = DnsmasqDhcpServerWrapper.DNSMASQ_DBUS_SERVICE_INTERFACE,
-#                                               message_keyword='dbus_message')   # Handle the IpConfigApplied signal
-#         
-#         
         self._dbus_loop_exit = threading.Event() # Create a new threading event that will ask the D-Bus background thread to exit
         self._dbus_loop_exit.clear()
 
@@ -186,7 +170,7 @@ class AvahiWrapper:
         self._dbus_loop_thread.setDaemon(True)    # D-Bus loop should be forced to terminate when main program exits
         self._dbus_loop_thread.start()
         
-#         self._bus.watch_name_owner(DnsmasqDhcpServerWrapper.DNSMASQ_DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
+        self._bus.watch_name_owner(avahi.DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
         
         self._remote_version = ''
         self._getversion_unlock_event = threading.Event() # Create a new threading event that will allow the GetVersionString() D-Bus call below to execute within a timed limit
@@ -262,7 +246,17 @@ class AvahiWrapper:
                 self._dbus_loop_continue.clear()    # Clear this flag for next interruption
             
         logger.debug("Stopping dbus mainloop")
-    
+
+    def _handleBusOwnerChanged(self, new_owner):
+        """
+        Callback called when our D-Bus bus owner changes 
+        """
+        if new_owner == '':
+            logger.warn('No owner anymore for bus name ' + DnsmasqDhcpServerWrapper.DNSMASQ_DBUS_NAME)
+            raise Exception('LostDhcpSlave')
+        else:
+            pass # Owner exists
+
     def _getVersionUnlock(self, return_value):
         """
         This method is used as a callback for asynchronous D-Bus method call to GetVersionString()
