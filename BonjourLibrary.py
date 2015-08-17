@@ -252,8 +252,8 @@ class AvahiWrapper:
         Callback called when our D-Bus bus owner changes 
         """
         if new_owner == '':
-            logger.warn('No owner anymore for bus name ' + DnsmasqDhcpServerWrapper.DNSMASQ_DBUS_NAME)
-            raise Exception('LostDhcpSlave')
+            logger.warn('No owner anymore for bus name ' + avahi.DBUS_NAME)
+            raise Exception('LostAvahiDaemon')
         else:
             pass # Owner exists
 
