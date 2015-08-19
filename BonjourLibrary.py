@@ -724,11 +724,8 @@ if __name__ == '__main__':
     BL.start()
     input('Press enter & "Enable UPnP/Bonjour" on web interface')
     BL.expect_service_on_ip('169.254.2.35', '_http._tcp', 'eth1')
-    assert IP == BL.get_ip(MAC, '_http._tcp')
-    DATA = BL.check_run(IP, '_http._tcp')
-    BL.get_apname(DATA)
     input('Press enter & "Disable UPnP/Bonjour" on web interface')
-    BL.check_stop(IP, '_http._tcp')
+    BL.expect_no_service_on_ip('169.254.2.35', '_http._tcp', 'eth1')
 else:
     from robot.api import logger
 
