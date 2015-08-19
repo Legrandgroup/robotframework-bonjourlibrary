@@ -8,6 +8,7 @@ from __future__ import division
 import re
 import sys
 import time
+import os
 
 import threading
 
@@ -62,7 +63,7 @@ def arping(ip_address, interface=None, use_sudo = True):
         if not interface is None:
             arping_cmd += ['-i', str(interface)]
         arping_cmd += [str(ip_address)]
-        proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE)
+        proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))  # Hide stderr since we may expect errors if we use the wrong args (depending on the arping version we are using)
         result=[]
         for line in iter(proc.stdout.readline,''):
             result+=[line.rstrip()]
@@ -371,6 +372,7 @@ class AvahiBrowser:
             )
         interface_osname = self.dbus_iface.GetNetworkInterfaceNameByIndex(interface)
         key = (interface_osname, protocol, name, stype, domain)
+        logger.debug('_serviceBrowserItemAdded() callback: Got a new Bonjour device: ' + str(key) + ' with hostname ' + str(host) + ' at IP address ' + str(address))
         self.service_database.add(key, BonjourService(host, aprotocol, address, port, avahi.txt_array_to_string_array(txt), flags, mac_address=None))
 
     def _serviceBrowserItemRemoved(
@@ -473,6 +475,11 @@ class AvahiWrapper:
         self._dbus_service_browser_finished = threading.Event() # Threading event used to notify that all Bonjour services have been parsed by a service browser
 
         self._getversion_unlock_event.clear()
+        
+        while (not self._dbus_loop.is_running()):
+            time.sleep(0.1)   # Wait for another 10ms for D-Bus mainloop to start running
+        
+        #logger.debug('Going to perform D-Bus request GetVersionString()')
         self._dbus_iface.GetVersionString(reply_handler = self._getVersionUnlock, error_handler = self._getVersionError)
         if not self._getversion_unlock_event.wait(10):   # We give 4s for slave to answer the GetVersion() request
             raise Exception('TimeoutOnGetVersion')
@@ -707,7 +714,7 @@ class BonjourLibrary:
         """
 
         self._browse_generic(service_type)
-        logger.debug('Services found: ' + self._browser.service_database)
+        logger.debug('Services found: ' + str(self._browser.service_database))
         return self._browser.service_database.export_to_tuple_list()
 
     def expect_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
