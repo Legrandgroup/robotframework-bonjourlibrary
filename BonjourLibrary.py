@@ -35,24 +35,75 @@ import avahi.ServiceTypeDatabase
 #         collection.append(result)
 #     return collection
 
+arping_supports_r_i = True
+
 def arping(ip_address, interface=None, use_sudo = True):
     """
     This function runs arping and returns a list of MAC addresses matching with the IP address provided as argument (or an empty list if there was no reply)
     """
+    
+    global arping_supports_r_i
+    
     if use_sudo:
-        arping_cmd = ['sudo']
+        arping_cmd_prefix = ['sudo']
     else:
-        arping_cmd = []
-    arping_cmd += ['arping', '-c', '1', '-r']
-    if not interface is None:
-        arping_cmd += ['-i', str(interface)]
-    arping_cmd += [str(ip_address)]
-    proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE)
-    result=[]
-    for line in iter(proc.stdout.readline,''):
-        result+=[line.rstrip()]
+        arping_cmd_prefix = []
+    
+    arping_cmd_prefix += ['arping', '-c', '1']
+    
+    if arping_supports_r_i:
+        arping_cmd = arping_cmd_prefix + ['-r']
+        if not interface is None:
+            arping_cmd += ['-i', str(interface)]
+        arping_cmd += [str(ip_address)]
+        proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE)
+        result=[]
+        for line in iter(proc.stdout.readline,''):
+            result+=[line.rstrip()]
 
-    return result
+        exitvalue = proc.wait()
+        if exitvalue == 0:
+            return result
+        else:
+            arping_supports_r_i = False
+    
+    # Some versions of arping coming from the iproute package do not support -r and use -I instead of -i
+    if not arping_supports_r_i:
+        arping_cmd = arping_cmd_prefix  # Reset the command line that we started to build above
+        if not interface is None:
+            arping_cmd += ['-I', str(interface)]
+        arping_cmd += [str(ip_address)]
+        print(arping_cmd)
+        proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE)
+        result=[]
+        arping_header_regexp = re.compile(r'^ARPING')
+        arp_reply_template1_regexp = re.compile(r'^.*from\s+([0-9]+\.[0-9]+\.[0-9]+.[0-9]+)\s\[([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\]')
+        arp_reply_template2_regexp = re.compile(r'^.*from\s+([0-9]+\.[0-9]+\.[0-9]+.[0-9]+)\s\[([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\]')
+        arping_ip_addr = None
+        arping_mac_addr = None
+        for line in iter(proc.stdout.readline,''):
+            line = line.rstrip()
+            if not re.match(arping_header_regexp, line):    # Skip the header from arping
+                print("Got '" + line + "'")
+                match = re.match(arp_reply_template1_regexp, line)
+                if match:
+                    arping_ip_addr = match.group(1)
+                    arping_mac_addr = match.group(2)
+                    break
+                match = re.match(arp_reply_template2_regexp, line)
+                if match:
+                    arping_ip_addr = match.group(1)
+                    arping_mac_addr = match.group(2)
+                    break
+            
+        if not arping_mac_addr is None:
+            result+=[arping_mac_addr]
+        
+        exitvalue = proc.wait()
+        if exitvalue == 0:
+            return result
+        else:
+            raise Exception('ArpingSubprocessFailed')
 
 def mac_normalise(mac, unix_format=True):
     """ Convert all friendly `mac` string to a uniform representation.
@@ -733,6 +784,7 @@ if __name__ == '__main__':
 
     MAC = '00:04:74:12:00:00'
     IP = '10.10.8.39'
+    print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
     AVAHI_DAEMON = '/etc/init.d/avahi-daemon'
     BL = BonjourLibrary('local', AVAHI_DAEMON)
     BL.start()
