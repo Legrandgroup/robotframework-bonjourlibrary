@@ -178,6 +178,31 @@ value:%s
 
         self._database = {}
 
+    def is_ip_address_in_db(self, ip_address):
+        try:
+            records = self._database.iteritems()
+        except AttributeError:
+            records = self._database.items()
+        
+        for (key, bonjour_service) in records:
+            if bonjour_service.ip_address == ip_address:
+                return True
+        return False
+
+    def is_mac_address_in_db(self, mac_address):
+        if mac_address is None:
+            return False
+        
+        try:
+            records = self._database.iteritems()
+        except AttributeError:
+            records = self._database.items()
+        
+        for (key, bonjour_service) in records:
+            if bonjour_service.mac_address == mac_address:
+                return True
+        return False
+        
     def get_ip_address_from_mac_address(self, searched_mac):
         """ Get the details of the services published for the host matching with MAC address \p mac
         \param searched_mac The MAC address of the device to search
@@ -209,16 +234,31 @@ value:%s
 
 class AvahiBrowser:
     
-    def __init__(self, bus, dbus_iface, service_type, finished_event = None, domain = 'local'):
+    def __init__(self, bus, dbus_iface, service_type, finished_event = None, network_interface_name = None, domain = 'local'):
+        """
+        Instanciate a new set of avahi browser callbacks to parse the result of a browse
+        
+        \param bus The D-Bus object
+        \param dbus_iface The D-Bus interface to use
+        \param service_type The Bonjour service type to search
+        \param finished_event Athreading.Event object to set when browsing is complete
+        \param network_interface_name A network interface name (written with the OS interface naming convention, eg: 'eth1', or None if we need to search on all network interfaces)
+        \param domain The Bonjour domain on which to perform the search
+        """
         self.bus = bus
         self.dbus_iface = dbus_iface
         self.service_type = service_type
         self.domain = domain
         self.finished_event = finished_event
+        if network_interface_name:
+            self.avahi_interface = self.dbus_iface.GetNetworkInterfaceIndexByName(network_interface_name)
+        else:
+            self.avahi_interface = avahi.IF_UNSPEC
+        
         self.service_database = BonjourServiceDatabase(resolve_mac = True)
         
         logger.debug('Starting a new service browser on domain=' + str(self.domain) + ', service type=' + str(self.service_type))
-        browser_path = self.dbus_iface.ServiceBrowserNew(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, self.service_type, self.domain, dbus.UInt32(0))
+        browser_path = self.dbus_iface.ServiceBrowserNew(self.avahi_interface, avahi.PROTO_UNSPEC, self.service_type, self.domain, dbus.UInt32(0))
         browser_proxy = self.bus.get_object(avahi.DBUS_NAME, browser_path)
         browser_interface = dbus.Interface(browser_proxy, avahi.DBUS_INTERFACE_SERVICE_BROWSER)
         browser_interface.connect_to_signal('AllForNow', self._serviceBrowserDone)
@@ -356,7 +396,7 @@ class AvahiWrapper:
         self._dbus_loop_thread.setDaemon(True)    # D-Bus loop should be forced to terminate when main program exits
         self._dbus_loop_thread.start()
         
-        self._bus.watch_name_owner(avahi.DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
+        #self._bus.watch_name_owner(avahi.DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
         
         self._remote_version = ''
         self._getversion_unlock_event = threading.Event() # Create a new threading event that will allow the GetVersionString() D-Bus call below to execute within a timed limit
@@ -366,10 +406,10 @@ class AvahiWrapper:
 
         self._getversion_unlock_event.clear()
         self._dbus_iface.GetVersionString(reply_handler = self._getVersionUnlock, error_handler = self._getVersionError)
-        if not self._getversion_unlock_event.wait(4):   # We give 4s for slave to answer the GetVersion() request
+        if not self._getversion_unlock_event.wait(10):   # We give 4s for slave to answer the GetVersion() request
             raise Exception('TimeoutOnGetVersion')
         else:
-            logger.debug('avahi version: ' + self._remote_version)
+            logger.debug('Avahi version: ' + self._remote_version)
         
         self._getstate_unlock_event = threading.Event() # Create a new threading event that will allow the GetState() D-Bus call below to execute within a timed limit 
 
@@ -577,48 +617,57 @@ class BonjourLibrary:
         self._browser = None
         #ToolLibrary.run(self._avahi_daemon_exec_path, 'stop')
 
-    def check_run(self, address, stype='_http._tcp'):
-        """ Test if service type `stype` is present on `address`.
+    def get_services(self, service_type = '_http._tcp', interface_name = None):
+        """ Get all currently published Bonjour services as a list
         
-        Return service.
+        First (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
+        Second (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
+        
+        Return a list of services found on the network
         
         Example:
-        | Check Run | ip | _http._tcp |
+        | Get Services | _http._tcp |
         =>
-        | ${service} |
+        | ${list} |
+        
+        | Get Services | eth1 | _http._tcp |
+        =>
+        | ${list} |
         """
 
-        self._browse_generic(stype)
-        temp = self._browser.service_database.get_key_from_address(address)
-        if temp is not None:
-            ret = temp
-        else:
-            raise LegrandError("Service '%s' expected on '%s'" % (stype, address))
-        return ret
+        self._browse_generic(service_type)
+        logger.debug('Services found: ' + self._browser.service_database)
+        return self._browser.service_database
 
-    def check_stop(self, address, stype='_http._tcp'):
-        """ Test if service type `stype` is missing on `address`.
-        
-        Return service.
+    def expect_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
+        """ Test if service type `service_type` is running on device with IP address `ip_address`
         
         Example:
-        | Check Stop | ip | _http._tcp |
+        | Expect Service On IP | 192.168.0.1 | _http._tcp |
         """
 
-        self._browse_generic(stype)
-        temp = self._browser.service_database.get_key_from_address(address)
-        if temp is not None:
-            raise LegrandError("Service '%s' not expected on '%s'" % (stype, address))
+        self._browse_generic(service_type)
+        if not self._browser.service_database.is_ip_address_in_db(ip_address):
+            raise Exception('ServiceAbsent:' + str(service_type) + ' on ' + str(ip_address))
 
+    def expect_no_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
+        """ Test if service type `service_type` is running on device with IP address `ip_address`
+        
+        Example:
+        | Expect No Service On IP | 192.168.0.1 | _http._tcp |
+        """
+
+        self._browse_generic(service_type)
+        if self._browser.service_database.is_ip_address_in_db(ip_address):
+            raise Exception('ServiceExists:' + str(service_type) + ' on ' + str(ip_address))
+    
     def get_ip(self, mac, stype='_http._tcp'):
-        """ Get first ip address which have service type `stype` and `mac`.
-        
-        Return IP.
+        """ Returns a list of IP addresses that publish a service of type `stype`.
         
         Example:
-        | Get IP | 01.23.45.67.89.ab | _http._tcp |
+        | Get IP | _http._tcp |
         =>
-        | ip |
+        | 169.254.47.26 |
         """
 
         self._browse_generic(stype)
@@ -674,6 +723,7 @@ if __name__ == '__main__':
     BL.stop()
     BL.start()
     input('Press enter & "Enable UPnP/Bonjour" on web interface')
+    BL.expect_service_on_ip('169.254.2.35', '_http._tcp', 'eth1')
     assert IP == BL.get_ip(MAC, '_http._tcp')
     DATA = BL.check_run(IP, '_http._tcp')
     BL.get_apname(DATA)
