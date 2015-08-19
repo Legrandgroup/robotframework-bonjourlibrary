@@ -373,7 +373,7 @@ class AvahiBrowser:
         interface_osname = str(self.dbus_iface.GetNetworkInterfaceNameByIndex(interface))
         key = (interface_osname, int(protocol), str(name), str(stype), str(domain))
         print('_serviceBrowserItemAdded() callback: Got a new Bonjour device: ' + str(key) + ' with hostname ' + str(host) + ' at IP address ' + str(address))
-        self.service_database.add(key, BonjourService(str(host), aprotocol, str(address), port, avahi.txt_array_to_string_array(txt), flags, mac_address=None))
+        self.service_database.add(key, BonjourService(str(host), int(aprotocol), str(address), int(port), avahi.txt_array_to_string_array(txt), long(flags), mac_address=None))
 
     def _serviceBrowserItemRemoved(
         self,
