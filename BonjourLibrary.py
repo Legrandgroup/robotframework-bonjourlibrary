@@ -466,7 +466,7 @@ class AvahiWrapper:
         self._dbus_loop_thread.setDaemon(True)    # D-Bus loop should be forced to terminate when main program exits
         self._dbus_loop_thread.start()
         
-        #self._bus.watch_name_owner(avahi.DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
+        self._bus.watch_name_owner(avahi.DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
         
         self._remote_version = ''
         self._getversion_unlock_event = threading.Event() # Create a new threading event that will allow the GetVersionString() D-Bus call below to execute within a timed limit
