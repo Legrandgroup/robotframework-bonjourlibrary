@@ -370,10 +370,10 @@ class AvahiBrowser:
             avahi.PROTO_UNSPEC,
             dbus.UInt32(0),
             )
-        interface_osname = self.dbus_iface.GetNetworkInterfaceNameByIndex(interface)
-        key = (interface_osname, protocol, name, stype, domain)
-        logger.debug('_serviceBrowserItemAdded() callback: Got a new Bonjour device: ' + str(key) + ' with hostname ' + str(host) + ' at IP address ' + str(address))
-        self.service_database.add(key, BonjourService(host, aprotocol, address, port, avahi.txt_array_to_string_array(txt), flags, mac_address=None))
+        interface_osname = str(self.dbus_iface.GetNetworkInterfaceNameByIndex(interface))
+        key = (interface_osname, int(protocol), str(name), str(stype), str(domain))
+        print('_serviceBrowserItemAdded() callback: Got a new Bonjour device: ' + str(key) + ' with hostname ' + str(host) + ' at IP address ' + str(address))
+        self.service_database.add(key, BonjourService(str(host), aprotocol, str(address), port, avahi.txt_array_to_string_array(txt), flags, mac_address=None))
 
     def _serviceBrowserItemRemoved(
         self,
@@ -716,29 +716,29 @@ class BonjourLibrary:
         logger.debug('Services found: ' + str(self._browser.service_database))
         return self._browser.service_database.export_to_tuple_list()
 
-    def expect_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
+    def expect_service_on_ip(self, ip_address):
         """ Test if service type `service_type` is running on device with IP address `ip_address`
         
         Note: `Browse Services` must have been run prior to calling this keyword
         
         Example:
-        | Expect Service On IP | 192.168.0.1 | _http._tcp |
+        | Expect Service On IP | 192.168.0.1 |
         """
 
         if not self._browser.service_database.is_ip_address_in_db(ip_address):
-            raise Exception('ServiceAbsent:' + str(service_type) + ' on ' + str(ip_address))
+            raise Exception('ServiceNotFoundOn:' + str(ip_address))
 
-    def expect_no_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
+    def expect_no_service_on_ip(self, ip_address):
         """ Test if service type `service_type` is running on device with IP address `ip_address`
         
         Note: `Browse Services` must have been run prior to calling this keyword
         
         Example:
-        | Expect No Service On IP | 192.168.0.1 | _http._tcp |
+        | Expect No Service On IP | 192.168.0.1 |
         """
 
         if self._browser.service_database.is_ip_address_in_db(ip_address):
-            raise Exception('ServiceExists:' + str(service_type) + ' on ' + str(ip_address))
+            raise Exception('ServiceExistsOn:' + str(ip_address))
     
     def get_ip(self, mac):
         """ Returns the IP address matching MAC address mac from the list a Bonjour devices in the database
@@ -798,7 +798,7 @@ if __name__ == '__main__':
         pass
 
     MAC = '00:04:74:12:00:00'
-    IP = '10.10.8.39'
+    IP = '169.254.5.18'
     print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
     AVAHI_DAEMON = '/etc/init.d/avahi-daemon'
     BL = BonjourLibrary('local', AVAHI_DAEMON)
@@ -806,9 +806,10 @@ if __name__ == '__main__':
     BL.stop()
     BL.start()
     input('Press enter & "Enable UPnP/Bonjour" on web interface')
-    BL.expect_service_on_ip('169.254.2.35', '_http._tcp', 'eth1')
+    BL.get_services(service_type='_http._tcp', interface_name='eth1')
+    BL.expect_service_on_ip(IP)
     input('Press enter & "Disable UPnP/Bonjour" on web interface')
-    BL.expect_no_service_on_ip('169.254.2.35', '_http._tcp', 'eth1')
+    BL.expect_no_service_on_ip(IP)
 else:
     from robot.api import logger
 
