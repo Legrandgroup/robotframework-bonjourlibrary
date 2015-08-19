@@ -145,32 +145,19 @@ value:%s
 ''' % (key, value)
         return temp
 
-    def add(self, arg):
+    def add(self, key, bonjour_service):
         """ Add one Bonjour service in database
         
-        \param arg A tuple containing the description of the Bonjour service (interface, protocol, name, stype, domain, host, aprotocol, address, port, txt, flags)
+        \param key A tuple containing the description of the Bonjour service (interface, protocol, name, stype, domain) (note that interface is a string containing the interface name following the OS designation)
+        \param bonjour_service An instance of BonjourService to add in the database for this \p key
         """
 
-        (
-            interface,
-            protocol,
-            name,
-            stype,
-            domain,
-            host,
-            aprotocol,
-            address,
-            port,
-            txt,
-            flags,
-            ) = arg
-        key = (interface, protocol, name, stype, domain)
+        (interface_osname, protocol, name, stype, domain) = key
         if self.resolve_mac:
-            raise Exception('NotYetImplemented')
-        value = BonjourService(host, aprotocol, address, port, avahi.txt_array_to_string_array(txt), flags, mac_address=None)
+            bonjour_service.mac_address = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=True)
         if key not in self._database.keys():
             print('Adding entry for key ' + str(key))
-            self._database[key] = value
+            self._database[key] = bonjour_service
 
     def remove(self, key):
         """ Remove one Bonjour service in database
@@ -227,7 +214,7 @@ class AvahiBrowser:
         self.service_type = service_type
         self.domain = domain
         self.finished_event = finished_event
-        self.service_database = BonjourServiceDatabase()
+        self.service_database = BonjourServiceDatabase(resolve_mac = True)
         
         logger.debug('Starting a new service browser on domain=' + str(self.domain) + ', service type=' + str(self.service_type))
         browser_path = self.dbus_iface.ServiceBrowserNew(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, self.service_type, self.domain, dbus.UInt32(0))
@@ -252,7 +239,19 @@ class AvahiBrowser:
         """ add a Bonjour service in database """
 
         logger.debug('Avahi:ItemNew')
-        temp = self.dbus_iface.ResolveService(
+        (
+            interface,
+            protocol,
+            name,
+            stype,
+            domain,
+            host,
+            aprotocol,
+            address,
+            port,
+            txt,
+            flags
+        ) = self.dbus_iface.ResolveService(
             interface,
             protocol,
             name,
@@ -261,7 +260,9 @@ class AvahiBrowser:
             avahi.PROTO_UNSPEC,
             dbus.UInt32(0),
             )
-        self.service_database.add(temp)
+        interface_osname = self.dbus_iface.GetNetworkInterfaceNameByIndex(interface)
+        key = (interface_osname, protocol, name, stype, domain)
+        self.service_database.add(key, BonjourService(host, aprotocol, address, port, avahi.txt_array_to_string_array(txt), flags, mac_address=None))
 
     def _serviceBrowserItemRemoved(
         self,
@@ -275,7 +276,8 @@ class AvahiBrowser:
         """ remove a Bonjour service in database """
 
         logger.debug('Avahi:ItemRemove')
-        key = (interface, protocol, name, stype, domain)
+        interface_osname = self.dbus_iface.GetNetworkInterfaceNameByIndex(interface)
+        key = (interface_osname, protocol, name, stype, domain)
         self.service_database.remove(key)
 
     def _serviceBrowserDone(self):
