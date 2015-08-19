@@ -660,7 +660,7 @@ class BonjourLibrary:
         logger.debug('DBus loop ending with database:%s' % self._browser.service_database)
 
     def start(self):
-        """ Start monitoring the Avahi service.
+        """ Connects to the Avahi service.
 
         Example:
         | Start |
@@ -670,7 +670,7 @@ class BonjourLibrary:
         self._browser = BonjourWrapper(self._domain)
 
     def stop(self):
-        """ Stop monitoring the Avahi service.
+        """ Disconnects from the Avahi service.
 
         Example:
         | Stop |
@@ -705,7 +705,7 @@ class BonjourLibrary:
     def expect_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
         """ Test if service type `service_type` is running on device with IP address `ip_address`
         
-        Note: `Browse Services` must be called before calling this keyword 
+        Note: `Browse Services` must have been run prior to calling this keyword
         
         Example:
         | Expect Service On IP | 192.168.0.1 | _http._tcp |
@@ -717,7 +717,7 @@ class BonjourLibrary:
     def expect_no_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
         """ Test if service type `service_type` is running on device with IP address `ip_address`
         
-        Note: `Browse Services` must be called before calling this keyword
+        Note: `Browse Services` must have been run prior to calling this keyword
         
         Example:
         | Expect No Service On IP | 192.168.0.1 | _http._tcp |
@@ -726,21 +726,22 @@ class BonjourLibrary:
         if self._browser.service_database.is_ip_address_in_db(ip_address):
             raise Exception('ServiceExists:' + str(service_type) + ' on ' + str(ip_address))
     
-    def get_ip(self, mac, stype='_http._tcp'):
-        """ Returns a list of IP addresses that publish a service of type `stype`.
+    def get_ip(self, mac):
+        """ Returns the IP address matching MAC address mac from the list a Bonjour devices in the database
+        
+        Note: `Browse Services` must have been run prior to calling this keyword
         
         Example:
-        | Get IP | _http._tcp |
+        | Get IP | 00:04:74:12:00:01 |
         =>
         | 169.254.47.26 |
         """
 
-        self._browse_generic(stype)
         temp = self._browser.service_database.get_ip_address_from_mac_address(mac)
         if temp is not None:
             ret = temp
         else:
-            raise Exception("ServiceNotFound:" + str(stype ) + ' on ' +str(mac))
+            raise Exception("MachineNotFound:" + str(mac))
         ret = unicode(ret)
         return ret
 
