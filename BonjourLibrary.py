@@ -97,14 +97,27 @@ class BonjourService:
     """ Description of a Bonjour service (this is a data container without any method (the equivalent of a C-struct))
     """
     
-    def __init__(self, host, aprotocol, ip_address, port, txt, flags, mac_address = None):
-        self.host = host
+    def __init__(self, hostname, aprotocol, ip_address, port, txt, flags, mac_address = None):
+        self.hostname = hostname
         self.aprotocol = aprotocol
         self.ip_address = ip_address
         self.mac_address = mac_address
         self.port = port
         self.txt = txt
         self.flags = flags
+        
+    def __repr__(self):
+        result = '[' + str(self.hostname)
+        if not self.port is None:
+            result += ':' + str(self.port)
+        result += ',IP=' + str(self.ip_address)
+        if not self.mac_address is None:
+            result += '(' + str(self.mac_address) + ')'
+        if self.txt:
+            result += ',TXT="' + str(txt) + '"'
+        result += ']'
+        return result
+
 
 class BonjourServiceDatabase:
 
@@ -181,10 +194,9 @@ value:%s
         mac_manufacturer = mac[10:]
         for key in self._database.keys():
             print('Got entry with key' + str(key))
-            temp = self.get_info_from_key(key)
-            if temp is not None:
-                mac_product = temp[1]
-                print('Searching in db... found MAC="' + mac_product + '"')
+            mac_product = self._database[key].mac_address
+            print('Searching in db... found MAC="' + str(mac_product) + '"')
+            if not mac_product is None:
                 bonjour_mac = mac_normalise(mac_manufacturer + mac_product, False)
                 if mac == bonjour_mac:
                     address = self._database[key][2]
@@ -202,30 +214,6 @@ value:%s
             if address == value[2]:
                 return key
 
-    def get_info_from_key(self, key):
-        """ get information from key """
-
-        host = self._database[key][0]
-        (_fake1, _fake2, name, _fake4, _fake5) = key
-        print('Checking host "' + str(host) + '"')
-        print('Checking name "' + str(name) + '"')
-        result = re.match(ServiceDatabase.HOST_LINDY, host)
-        if result is not None:
-            print('Matches Lindy')
-            (apname, mac_product, where) = result.groups()
-            return [apname, mac_product, where]
-        result = re.match(ServiceDatabase.NAME_SOHO, name)
-        if result is not None:
-            print('Matches Soho')
-            (apname, mac_product) = result.groups()
-            where='local'
-            return [apname, mac_product, where]
-        result = re.match(ServiceDatabase.HOST_MP5, host)
-        if result is not None:
-            print('Matches MP5')
-            (apname, mac_product, where) = result.groups()
-            mac_product = '0d9cf0'  # FIXME
-            return [apname, mac_product, where]
 
 class AvahiBrowser:
     
