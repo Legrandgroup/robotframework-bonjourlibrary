@@ -83,14 +83,13 @@ def arping(ip_address, interface=None, use_sudo = True):
         proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE)
         result=[]
         arping_header_regexp = re.compile(r'^ARPING')
-        arp_reply_template1_regexp = re.compile(r'^.*from\s+([0-9]+\.[0-9]+\.[0-9]+.[0-9]+)\s\[([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\]')
-        arp_reply_template2_regexp = re.compile(r'^.*from\s+([0-9]+\.[0-9]+\.[0-9]+.[0-9]+)\s\[([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\]')
+        arp_reply_template1_regexp = re.compile(r'^.*from\s+([0-9]+\.[0-9]+\.[0-9]+.[0-9]+)\s+\[([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\]')
+        arp_reply_template2_regexp = re.compile(r'^.*from\s+([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\s+[(]([0-9]+\.[0-9]+\.[0-9]+.[0-9]+)[)]')
         arping_ip_addr = None
         arping_mac_addr = None
         for line in iter(proc.stdout.readline,''):
             line = line.rstrip()
             if not re.match(arping_header_regexp, line):    # Skip the header from arping
-                print("Got '" + line + "'")
                 match = re.match(arp_reply_template1_regexp, line)
                 if match:
                     arping_ip_addr = match.group(1)
@@ -98,8 +97,8 @@ def arping(ip_address, interface=None, use_sudo = True):
                     break
                 match = re.match(arp_reply_template2_regexp, line)
                 if match:
-                    arping_ip_addr = match.group(1)
-                    arping_mac_addr = match.group(2)
+                    arping_ip_addr = match.group(2)
+                    arping_mac_addr = match.group(1)
                     break
             
         if not arping_mac_addr is None:
