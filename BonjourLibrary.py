@@ -91,7 +91,7 @@ def mac_normalise(mac, unix_format=True):
         delim=':'
     else:
         delim=''
-    return unicode(delim.join(select))
+    return delim.join(select)
 
 class BonjourService:
     """ Description of a Bonjour service (this is a data container without any method (the equivalent of a C-struct))
@@ -154,9 +154,14 @@ value:%s
 
         (interface_osname, protocol, name, stype, domain) = key
         if self.resolve_mac:
-            bonjour_service.mac_address = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=True)
+            mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=True)
+            if len(mac_address_list) == 0:
+                bonjour_service.mac_address = None
+            else:
+                if len(mac_address_list) > 1:  # More than one MAC address... issue a warning
+                    logger.warning('Got more than one MAC address for IP address ' + str(bonjour_service.ip_address) + ': ' + str(mac_address_list) + '. Using first')
+                bonjour_service.mac_address = mac_address_list[0]
         if key not in self._database.keys():
-            print('Adding entry for key ' + str(key))
             self._database[key] = bonjour_service
 
     def remove(self, key):
@@ -173,23 +178,19 @@ value:%s
 
         self._database = {}
 
-    def get_address_from_mac(self, mac):
+    def get_ip_address_from_mac_address(self, searched_mac):
         """ Get the details of the services published for the host matching with MAC address \p mac
-        \param mac The MAC address of the device to search
+        \param searched_mac The MAC address of the device to search
         
         \return The IP address of the device (if found)
         """
 
-        print('Entering get_address_from_mac()')
-        mac = mac_normalise(mac, False)
-        mac_manufacturer = mac[10:]
+        searched_mac = mac_normalise(searched_mac, False)
         for key in self._database.keys():
-            print('Got entry with key' + str(key))
             mac_product = self._database[key].mac_address
-            print('Searching in db... found MAC="' + str(mac_product) + '"')
             if not mac_product is None:
-                bonjour_mac = mac_normalise(mac_manufacturer + mac_product, False)
-                if mac == bonjour_mac:
+                mac_product = mac_normalise(mac_product, False)
+                if searched_mac == mac_product:
                     ip_address = self._database[key].ip_address
                     return ip_address
 
@@ -621,11 +622,11 @@ class BonjourLibrary:
         """
 
         self._browse_generic(stype)
-        temp = self._browser.service_database.get_address_from_mac(mac)
+        temp = self._browser.service_database.get_ip_address_from_mac_address(mac)
         if temp is not None:
             ret = temp
         else:
-            raise Exception("Service '%s' expected on '%s'" % (stype, mac))
+            raise Exception("ServiceNotFound:" + str(stype ) + ' on ' +str(mac))
         ret = unicode(ret)
         return ret
 
@@ -665,7 +666,7 @@ if __name__ == '__main__':
     except NameError:
         pass
 
-    MAC = '00:04:74:05:00:f0'
+    MAC = '00:04:74:12:00:00'
     IP = '10.10.8.39'
     AVAHI_DAEMON = '/etc/init.d/avahi-daemon'
     BL = BonjourLibrary('local', AVAHI_DAEMON)
