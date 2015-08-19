@@ -672,7 +672,6 @@ class BonjourLibrary:
  
         self._browser.service_database.reset()
         self._browser.browse_service_type(stype)
-        logger.debug('Found the following Bonjour devices:%s' % self._browser.service_database)
 
     def start(self):
         """ Connects to the Avahi service.
