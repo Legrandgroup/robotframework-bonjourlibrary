@@ -187,7 +187,11 @@ value:%s
         self._database = {}
 
     def get_address_from_mac(self, mac):
-        """ get the first IP address with MAC in hostname """
+        """ Get the details of the services published for the host matching with MAC address \p mac
+        \param mac The MAC address of the device to search
+        
+        \return The IP address of the device (if found)
+        """
 
         print('Entering get_address_from_mac()')
         mac = mac_normalise(mac, False)
@@ -199,8 +203,8 @@ value:%s
             if not mac_product is None:
                 bonjour_mac = mac_normalise(mac_manufacturer + mac_product, False)
                 if mac == bonjour_mac:
-                    address = self._database[key][2]
-                    return address
+                    ip_address = self._database[key].ip_address
+                    return ip_address
 
     def get_key_from_address(self, address):
         """ get the first service with given IP address in database """
