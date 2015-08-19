@@ -15,20 +15,108 @@ import gobject
 import dbus
 import dbus.mainloop.glib
 
+import subprocess
+
 import avahi
 import avahi.ServiceTypeDatabase
 
-#from ToolLibrary import ToolLibrary
+# The pythonic-version of arping below (using python scapy) is commented out because it cannot gain superuser rights via sudo, we should thus be root
+# This would however be more platform-independent... instead, we run the arping command (via sudo) and parse its output
+# import scapy.all
+# def arping(iprange):
+#     """Arping function takes IP Address or Network, returns nested mac/ip list"""
+# 
+#     scapy.all.conf.verb=0
+#     ans,unans = scapy.all.srp(scapy.all.Ether(dst="ff:ff:ff:ff:ff:ff")/scapy.all.ARP(pdst=iprange), timeout=2)
+# 
+#     collection = []
+#     for snd, rcv in ans:
+#         result = rcv.sprintf(r"%scapy.all.ARP.psrc% %scapy.all.Ether.src%").split()
+#         collection.append(result)
+#     return collection
 
-class ServiceDatabase:
+def arping(ip_address, interface=None, use_sudo = True):
+    """
+    This function runs arping and returns a list of MAC addresses matching with the IP address provided as argument (or an empty list if there was no reply)
+    """
+    if use_sudo:
+        arping_cmd = ['sudo']
+    else:
+        arping_cmd = []
+    arping_cmd += ['arping', '-c', '1', '-r']
+    if not interface is None:
+        arping_cmd += ['-i', str(interface)]
+    arping_cmd += [str(ip_address)]
+    proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE)
+    result=[]
+    for line in iter(proc.stdout.readline,''):
+        result+=[line.rstrip()]
+
+    return result
+
+def mac_normalise(mac, unix_format=True):
+    """ Convert all friendly `mac` string to a uniform representation.
+
+    Example:
+    | MAC String | 01.23.45.67.89.ab |
+    | MAC String | 01:23:45:67:89:ab |
+    | MAC String | 01-23-45-67-89-ab |
+    | MAC String | 012345.6789ab |
+    | MAC String | 0123456789ab |
+    =>
+    | 0123456789ab |
+    
+    \param unix_format If set to true, use the UNIX representation, so would output: 01:23:45:67:89:ab
+    """
+
+    ret = ''
+    mac = str(mac)
+    mac = mac.lower()
+    mac = mac.strip()
+    re_mac_one = re.compile(r'^(\w{2})[:|\-](\w{2})[:|\-](\w{2})[:|\-](\w{2})[:|\-](\w{2})[:|\-](\w{2})$')
+    re_mac_two = re.compile(r'^(\w{4})\.(\w{4})\.(\w{4})$')
+    re_mac_three = re.compile(r'^(\w{12})$')
+    one = re.match(re_mac_one, mac)
+    two = re.match(re_mac_two, mac)
+    tree = re.match(re_mac_three, mac)
+    if one:
+        select = one.groups()
+    elif two:
+        select = two.groups()
+    elif tree:
+        select = tree.groups()
+    else:
+        raise Exception('InvalidMACFormat:' + str(mac))
+    if unix_format:
+        delim=':'
+    else:
+        delim=''
+    return unicode(delim.join(select))
+
+class BonjourService:
+    """ Description of a Bonjour service (this is a data container without any method (the equivalent of a C-struct))
+    """
+    
+    def __init__(self, host, aprotocol, ip_address, port, txt, flags, mac_address = None):
+        self.host = host
+        self.aprotocol = aprotocol
+        self.ip_address = ip_address
+        self.mac_address = mac_address
+        self.port = port
+        self.txt = txt
+        self.flags = flags
+
+class BonjourServiceDatabase:
 
     """ Bonjour service database"""
 
-    HOST_LINDY = r'^AP-{1}(.*)-{1}(.*)\.{1}(.*)$'
-    HOST_MP5 = r'^(SwitchFTTO)(.*)\.{1}(.*)$'
-
-    def __init__(self):
+    def __init__(self, resolve_mac = False):
+        """
+        Initialise an empty BonjourServiceDatabase
+        \param resolve_mac If True, we will also resolve each entry to store the MAC address of the device together with its IP address
+        """
         self._database = {}
+        self.resolve_mac = resolve_mac
 
     def __repr__(self):
         temp = ''
@@ -45,7 +133,10 @@ value:%s
         return temp
 
     def add(self, arg):
-        """ add Bonjour service in database """
+        """ Add one Bonjour service in database
+        
+        \param arg A tuple containing the description of the Bonjour service (interface, protocol, name, stype, domain, host, aprotocol, address, port, txt, flags)
+        """
 
         (
             interface,
@@ -61,19 +152,18 @@ value:%s
             flags,
             ) = arg
         key = (interface, protocol, name, stype, domain)
-        value = (
-            host,
-            aprotocol,
-            address,
-            port,
-            avahi.txt_array_to_string_array(txt),
-            flags,
-            )
+        if self.resolve_mac:
+            raise Exception('NotYetImplemented')
+        value = BonjourService(host, aprotocol, address, port, avahi.txt_array_to_string_array(txt), flags, mac_address=None)
         if key not in self._database.keys():
+            print('Adding entry for key ' + str(key))
             self._database[key] = value
 
     def remove(self, key):
-        """ remove Bonjour service in database """
+        """ Remove one Bonjour service in database
+        
+        \param key A tuple containing (interface, protocol, name, stype, domain), which is the key of the record to delete from the database 
+        """
 
         if key in self._database.keys():
             del self._database[key]
@@ -86,15 +176,16 @@ value:%s
     def get_address_from_mac(self, mac):
         """ get the first IP address with MAC in hostname """
 
-        #mac = ToolLibrary.mac_string(mac)
-        #mac_manufacturer = ToolLibrary.mac_manufacturer(mac)
+        print('Entering get_address_from_mac()')
+        mac = mac_normalise(mac, False)
+        mac_manufacturer = mac[10:]
         for key in self._database.keys():
             print('Got entry with key' + str(key))
             temp = self.get_info_from_key(key)
             if temp is not None:
                 mac_product = temp[1]
                 print('Searching in db... found MAC="' + mac_product + '"')
-                #bonjour_mac = ToolLibrary.mac_string(mac_manufacturer + mac_product)
+                bonjour_mac = mac_normalise(mac_manufacturer + mac_product, False)
                 if mac == bonjour_mac:
                     address = self._database[key][2]
                     return address
@@ -115,12 +206,23 @@ value:%s
         """ get information from key """
 
         host = self._database[key][0]
+        (_fake1, _fake2, name, _fake4, _fake5) = key
+        print('Checking host "' + str(host) + '"')
+        print('Checking name "' + str(name) + '"')
         result = re.match(ServiceDatabase.HOST_LINDY, host)
         if result is not None:
+            print('Matches Lindy')
             (apname, mac_product, where) = result.groups()
+            return [apname, mac_product, where]
+        result = re.match(ServiceDatabase.NAME_SOHO, name)
+        if result is not None:
+            print('Matches Soho')
+            (apname, mac_product) = result.groups()
+            where='local'
             return [apname, mac_product, where]
         result = re.match(ServiceDatabase.HOST_MP5, host)
         if result is not None:
+            print('Matches MP5')
             (apname, mac_product, where) = result.groups()
             mac_product = '0d9cf0'  # FIXME
             return [apname, mac_product, where]
@@ -133,7 +235,7 @@ class AvahiBrowser:
         self.service_type = service_type
         self.domain = domain
         self.finished_event = finished_event
-        self.service_database = ServiceDatabase()
+        self.service_database = BonjourServiceDatabase()
         
         logger.debug('Starting a new service browser on domain=' + str(self.domain) + ', service type=' + str(self.service_type))
         browser_path = self.dbus_iface.ServiceBrowserNew(avahi.IF_UNSPEC, avahi.PROTO_UNSPEC, self.service_type, self.domain, dbus.UInt32(0))
@@ -240,7 +342,7 @@ class AvahiWrapper:
         gobject.threads_init()    # Allow the mainloop to run as an independent thread
         dbus.mainloop.glib.threads_init()
         
-        self.service_database = ServiceDatabase()
+        self.service_database = BonjourServiceDatabase()
         
         dbus_object_name = avahi.DBUS_PATH_SERVER
         logger.debug('Going to communicate with object ' + dbus_object_name)
