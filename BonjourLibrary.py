@@ -535,9 +535,11 @@ class AvahiWrapper:
             self._dbus_loop.run()
             # Our mainloop has been interrupted by an external source... check if we should exit
             if not self._dbus_loop_exit.isSet():
+                logger.debug("Pausing dbus mainloop")
                 # We should not exit, wait until someone instructs us to resume the main loop (using the _dbus_loop_continue event)
                 self._dbus_loop_continue.wait()
                 self._dbus_loop_continue.clear()    # Clear this flag for next interruption
+                logger.debug("Resuming dbus mainloop")
             
         logger.debug("Stopping dbus mainloop")
 
@@ -556,7 +558,7 @@ class AvahiWrapper:
         This method is used as a callback for asynchronous D-Bus method call to GetVersionString()
         It is run as a reply_handler to unlock the wait() on _getversion_unlock_event
         """
-        #logger.debug('_getVersionUnlock() called')
+        logger.debug('_getVersionUnlock() called')
         self._remote_version = str(return_value)
         self._getversion_unlock_event.set() # Unlock the wait() on self._getversion_unlock_event
         
@@ -565,6 +567,7 @@ class AvahiWrapper:
         This method is used as a callback for asynchronous D-Bus method call to GetVersion()
         It is run as an error_handler to raise an exception when the call to GetVersion() failed
         """
+        logger.debug('_getVersionError() called')
         logger.error('Error on invocation of GetVersionString() to avahi daemon, via D-Bus')
         raise Exception('ErrorOnDBusGetVersion')
 
@@ -662,7 +665,7 @@ class BonjourLibrary:
  
         self._browser.service_database.reset()
         self._browser.browse_service_type(stype)
-        logger.debug('DBus loop ending with database:%s' % self._browser.service_database)
+        logger.debug('Found the following Bonjour devices:%s' % self._browser.service_database)
 
     def start(self):
         """ Connects to the Avahi service.
