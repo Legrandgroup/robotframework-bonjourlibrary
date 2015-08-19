@@ -39,7 +39,13 @@ arping_supports_r_i = True
 
 def arping(ip_address, interface=None, use_sudo = True):
     """
-    This function runs arping and returns a list of MAC addresses matching with the IP address provided as argument (or an empty list if there was no reply)
+    This function runs arping and returns a list of MAC addresses matching with the IP address provided in \p ip_address (or an empty list if there was no reply)
+    
+    \param ip_address The IP to probe
+    \param interface A network interface on which to probe (or None if we should check all network interfaces)
+    \param use_sudo Use sudo to run the arping command (set this to True if privilege elevation is required)
+    
+    \return A list of MAC addresses matching with \p ip_address. Beware that this can be empty or even contain more than one entry
     """
     
     global arping_supports_r_i
