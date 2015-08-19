@@ -177,6 +177,31 @@ value:%s
         """ reset Bonjour service in database """
 
         self._database = {}
+        
+    def export_to_tuple_list(self):
+        """ Export the database to a list of tuples (so that it can be processed by RobotFramework keywords)
+        
+        \return A list of tuples containing (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address) 
+        """
+        export = []
+        try:
+            records = self._database.iteritems()
+        except AttributeError:
+            records = self._database.items()
+        
+        for (key, bonjour_service) in records:
+            (interface_osname, protocol, name, stype, domain) = key
+            hostname = bonjour_service.hostname
+            aprotocol = bonjour_service.aprotocol
+            ip_address = bonjour_service.ip_address
+            port = bonjour_service.port
+            txt = bonjour_service.txt
+            flags = bonjour_service.flags
+            mac_address = bonjour_service.mac_address
+            export += [(interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address)]
+        
+        return export
+        
 
     def is_ip_address_in_db(self, ip_address):
         try:
@@ -218,19 +243,6 @@ value:%s
                 if searched_mac == mac_product:
                     ip_address = self._database[key].ip_address
                     return ip_address
-
-    def get_key_from_address(self, address):
-        """ get the first service with given IP address in database """
-
-        try:
-            values = self._database.iteritems()
-        except AttributeError:
-            values = self._database.items()
-
-        for (key, value) in values:
-            if address == value[2]:
-                return key
-
 
 class AvahiBrowser:
     
@@ -623,7 +635,7 @@ class BonjourLibrary:
         First (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
         Second (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
         
-        Return a list of services found on the network
+        Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address) 
         
         Example:
         | Get Services | _http._tcp |
@@ -637,27 +649,29 @@ class BonjourLibrary:
 
         self._browse_generic(service_type)
         logger.debug('Services found: ' + self._browser.service_database)
-        return self._browser.service_database
+        return self._browser.service_database.export_to_tuple_list()
 
     def expect_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
         """ Test if service type `service_type` is running on device with IP address `ip_address`
+        
+        Note: `Browse Services` must be called before calling this keyword 
         
         Example:
         | Expect Service On IP | 192.168.0.1 | _http._tcp |
         """
 
-        self._browse_generic(service_type)
         if not self._browser.service_database.is_ip_address_in_db(ip_address):
             raise Exception('ServiceAbsent:' + str(service_type) + ' on ' + str(ip_address))
 
     def expect_no_service_on_ip(self, ip_address, service_type = '_http._tcp', interface_name = None):
         """ Test if service type `service_type` is running on device with IP address `ip_address`
         
+        Note: `Browse Services` must be called before calling this keyword
+        
         Example:
         | Expect No Service On IP | 192.168.0.1 | _http._tcp |
         """
 
-        self._browse_generic(service_type)
         if self._browser.service_database.is_ip_address_in_db(ip_address):
             raise Exception('ServiceExists:' + str(service_type) + ' on ' + str(ip_address))
     
@@ -679,8 +693,10 @@ class BonjourLibrary:
         ret = unicode(ret)
         return ret
 
-    def get_apname(self, key):
+    def get_ip_for_name(self, key):
         """ Get Application Point name from `key`.
+        
+        Note: `Browse Services` must be called before calling this keyword
         
         Return IP.
         
