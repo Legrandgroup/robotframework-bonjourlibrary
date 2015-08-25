@@ -25,11 +25,11 @@ import subprocess
 #         collection.append(result)
 #     return collection
 
+"""Global variable required for function arping() below"""
 arping_supports_r_i = True
 
 def arping(ip_address, interface=None, use_sudo = True):
-    """
-    This function runs arping and returns a list of MAC addresses matching with the IP address provided in \p ip_address (or an empty list if there was no reply)
+    """Run arping and returns a list of MAC addresses matching with the IP address provided in \p ip_address (or an empty list if there was no reply)
     
     \param ip_address The IP to probe
     \param interface A network interface on which to probe (or None if we should check all network interfaces)
@@ -101,18 +101,14 @@ def arping(ip_address, interface=None, use_sudo = True):
             raise Exception('ArpingSubprocessFailed')
 
 def mac_normalise(mac, unix_format=True):
-    """ Convert all friendly `mac` string to a uniform representation.
-
-    Example:
-    | MAC String | 01.23.45.67.89.ab |
-    | MAC String | 01:23:45:67:89:ab |
-    | MAC String | 01-23-45-67-89-ab |
-    | MAC String | 012345.6789ab |
-    | MAC String | 0123456789ab |
-    =>
-    | 0123456789ab |
+    """\brief Convert many notation of a MAC address to to a uniform representation
+    
+    \param mac The MAC address as a string
     
     \param unix_format If set to true, use the UNIX representation, so would output: 01:23:45:67:89:ab
+    
+    Example: mac_normalise('01.23.45.67.89.ab') == mac_normalise('01:23:45:67:89:ab') == mac_normalise('01-23-45-67-89-ab') == mac_normalise('0123456789ab') == '0123456789ab'
+    mac_normalise('01.23.45.67.89.ab') == '01:23:45:67:89:ab'
     """
 
     ret = ''
@@ -141,7 +137,33 @@ def mac_normalise(mac, unix_format=True):
 
 class AvahiBrowseServiceEvent:
     
+    """Class representing a service browse event (as output by avahi-browse)"""
+    
     def __init__(self, entry_array):
+        """\brief Class constructor
+        
+        \param entry_array One line of output as provided by avahi-browse in -p mode, formatted as a list of UTF-8 encoded strings
+        
+        This method will raise exceptions if the entry_array cannot be parsed correctly, otherwise the AvahiBrowseServiceEvent will be constructed properly.
+        However, there are two cases where this AvahiBrowseServiceEvent is not fully populated:
+        - if the event was an add ('-' prefix), we haven't resolved the service yet, so we will have minimal information (interface, ip_type, sname, stype, domain)
+        - if the event contains a TXT field that spans over multiple lines, we will set self.txt_missing_end to True and the caller should fill-in the rest of the TXT record by calling our addline() method with each subsequent lines until self.txt_missing_end is set to False
+        Note: self.txt_missing_end can also be queried by using our method called continued_on_next_line()
+        
+        The properties that are populated inside this class are:
+        self.interface The network interface (following the OS notation, eg: 'eth0')
+        self.ip_type The type of IP protocol on which the service is published ('ipv4' or 'ipv6')
+        self.sname The service name as a string
+        self.stype The service type following Bonjour's notation, eg '_http._tcp'
+        self.domain The domain on which the services were discovered, eg 'local'
+        self.event The type of avahi-browse event processed ('add' (+), 'update' (=) or 'del' (-))
+        self.hostname The hostname of the device publishing the service (eg: blabla.local)
+        self.ip_addr The IP address of the device publishing (eg: '192.168.0.1' or 'fe80::1')
+        self.sport The service TCP or UDP port (eg: 80)
+        self.txt The TXT field associated with the service
+        self.txt_missing_end A boolean set to True if the TXT field is a multiline value and we need more lines to terminate it
+        """
+        
         if entry_array is None:
             raise Exception('InvalidEntry')
         type = entry_array[0]
@@ -165,7 +187,7 @@ class AvahiBrowseServiceEvent:
                 self.hostname = entry_array[6]
                 self.ip_addr = entry_array[7]
                 self.sport = int(entry_array[8])
-                self.txt = AvahiBrowseServiceEvent.unescape_avahibrowse_txt_array(entry_array[9])
+                self.txt = entry_array[9]
                 #~ self.txt = unicode(self.txt, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
                 self.txt_missing_end = not AvahiBrowseServiceEvent.isClosedString(self.txt)
                 self.event = 'update'
@@ -180,9 +202,17 @@ class AvahiBrowseServiceEvent:
             raise Exception('UnknownType:' + type)
     
     def continued_on_next_line(self):
+        """\brief Are there more lines required to fill-in this service description
+        
+        \return True if there are more lines required to fill-in this service description. In such case, the additional lines can be provided by subsequent calls to method add_line() below
+        """
         return self.txt_missing_end
         
     def add_line(self, line):
+        """\brief Provided additional lines to fill-in this service description
+        
+        \param line A new line to process, encoded as UTF-8 (without the terminating carriage return)
+        """
         if not self.txt_missing_end:
             raise Exception('ExtraInputLine')
         else:
@@ -192,6 +222,12 @@ class AvahiBrowseServiceEvent:
     
     @staticmethod
     def unescape_avahibrowse_string(input):
+        """\brief Unescape all escaped characters in string \p input
+        
+        \param input String to unescape
+        
+        \return The unescaped string (avahi-browse escaped bytes will lead to an UTF-8 encoded returned string)
+        """
         output = ''
         espace_pos = input.find('\\')
         while espace_pos != -1:
@@ -212,12 +248,13 @@ class AvahiBrowseServiceEvent:
         return output
     
     @staticmethod
-    def unescape_avahibrowse_txt_array(input):
-        output = input
-        return output
-        
-    @staticmethod
     def convert_to_raw_service_type(input):
+        """\brief Convert an avahi-browse human readable service type string (eg 'Website') into the equivalent Bonjour-standard service type (eg '_http._tcp')
+        
+        \param input A string containing the human readable service type string as displayed by avahi-browse
+        
+        \return A string containing the equivalent Bonjour-standard service type
+        """
         if input == 'Web Site':
             output = '_http._tcp'
         elif input == 'Workstation':
@@ -240,10 +277,10 @@ class AvahiBrowseServiceEvent:
         
     @staticmethod
     def isClosedString(string):
-        """
-        \brief Checks if \p string is complete (not continuing on another line)
+        """\brief Checks if \p string is complete (not continuing on another line)
         
         \param string The input string to check
+        
         \return True if the string is complete and does not need a closing quote
         """
         closedString = True
@@ -252,7 +289,7 @@ class AvahiBrowseServiceEvent:
                 closedString = string.endswith('"')
         return closedString
     
-    def __str__(self):
+    def __repr__(self):
         if self.event == 'add':
             output = '+'
         elif self.event == 'update':
@@ -278,8 +315,7 @@ class AvahiBrowseServiceEvent:
         return output
 
 class BonjourService:
-    """ Description of a Bonjour service (this is a data container without any method (the equivalent of a C-struct))
-    """
+    """Description of a Bonjour service (this is a data container without any method (the equivalent of a C-struct))"""
     
     def __init__(self, hostname, aprotocol, ip_address, port, txt, flags, mac_address = None):
         self.hostname = hostname
@@ -304,12 +340,11 @@ class BonjourService:
 
 
 class BonjourServiceDatabase:
-
-    """ Bonjour service database"""
-
+    """Bonjour service database"""
+    
     def __init__(self, resolve_mac = False):
-        """
-        Initialise an empty BonjourServiceDatabase
+        """Initialise an empty BonjourServiceDatabase
+        
         \param resolve_mac If True, we will also resolve each entry to store the MAC address of the device together with its IP address
         """
         self._database = {}
@@ -330,7 +365,7 @@ value:%s
         return temp
 
     def add(self, key, bonjour_service):
-        """ Add one Bonjour service in database
+        """Add one Bonjour service in database
         
         \param key A tuple containing the description of the Bonjour service (interface, protocol, name, stype, domain) (note that interface is a string containing the interface name following the OS designation)
         \param bonjour_service An instance of BonjourService to add in the database for this \p key
@@ -348,7 +383,7 @@ value:%s
         self._database[key] = bonjour_service
 
     def remove(self, key):
-        """ Remove one Bonjour service in database
+        """Remove one Bonjour service in database
         
         \param key A tuple containing (interface, protocol, name, stype, domain), which is the key of the record to delete from the database 
         """
@@ -357,11 +392,14 @@ value:%s
             del self._database[key]
 
     def reset(self):
-        """ reset Bonjour service in database """
-
+        """\brief Empty the database"""
         self._database = {}
         
     def processEvent(self, avahi_event):
+        """\brief Update this database according to the \p avahi_event
+        
+        \param avahi_event The event to process, provided as an instance of AvahiBrowseServiceEvent
+        """
         key = (avahi_event.interface, avahi_event.ip_type, avahi_event.sname, avahi_event.stype, avahi_event.domain)
         if avahi_event.event == 'add':
             # With add events, we don't have any information about the service yet (it is not resolved)
@@ -373,9 +411,9 @@ value:%s
             raise Exception('UnknownEvent')
         
     def export_to_tuple_list(self):
-        """ Export the database to a list of tuples (so that it can be processed by RobotFramework keywords)
+        """Export this database to a list of tuples (so that it can be processed by RobotFramework keywords)
         
-        \return A list of tuples containing (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address) 
+        \return A list of tuples containing (interface, protocol, name, stype, domain, hostname, aprotocol, ip_address, sport, txt, flags, mac_address) 
         """
         export = []
         try:
@@ -423,7 +461,10 @@ value:%s
         return False
         
     def get_ip_address_from_mac_address(self, searched_mac):
-        """ Get the details of the services published for the host matching with MAC address \p mac
+        """\brief Check the IP address of a Bonjour device, given its MAC address
+        
+        Note: the database must have been filled with a list of devices prior to calling this method
+        
         \param searched_mac The MAC address of the device to search
         
         \return The IP address of the device (if found)
@@ -439,8 +480,7 @@ value:%s
                     return ip_address
 
 class BonjourLibrary:
-
-    """ Robot Framework Bonjour Library """
+    """Robot Framework Bonjour Library"""
 
     ROBOT_LIBRARY_DOC_FORMAT = 'ROBOT'
     ROBOT_LIBRARY_SCOPE = 'GLOBAL'
@@ -452,7 +492,7 @@ class BonjourLibrary:
         self._avahi_browse_exec_path = avahi_browse_exec_path
 
     def start(self):#Lionel: remove this keyword
-        """ Connects to the Avahi service.
+        """Connects to the Avahi service.
 
         Example:
         | Start |
@@ -462,7 +502,7 @@ class BonjourLibrary:
         self.service_database = BonjourServiceDatabase()
 
     def stop(self):#Lionel: remove this keyword
-        """ Disconnects from the Avahi service.
+        """Disconnects from the Avahi service.
 
         Example:
         | Stop |
@@ -471,7 +511,7 @@ class BonjourLibrary:
         self.service_database = None
 
     def get_services(self, service_type = '_http._tcp', interface_name = None):
-        """ Get all currently published Bonjour services as a list
+        """Get all currently published Bonjour services as a list
         
         First (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
         Second (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
@@ -514,7 +554,7 @@ class BonjourLibrary:
         return self.service_database.export_to_tuple_list()
 
     def expect_service_on_ip(self, ip_address):
-        """ Test if service type `service_type` is running on device with IP address `ip_address`
+        """Test if service type `service_type` is running on device with IP address `ip_address`
         
         Note: `Browse Services` must have been run prior to calling this keyword
         
@@ -526,7 +566,7 @@ class BonjourLibrary:
             raise Exception('ServiceNotFoundOn:' + str(ip_address))
 
     def expect_no_service_on_ip(self, ip_address):
-        """ Test if service type `service_type` is running on device with IP address `ip_address`
+        """Test if service type `service_type` is running on device with IP address `ip_address`
         
         Note: `Browse Services` must have been run prior to calling this keyword
         
@@ -538,7 +578,7 @@ class BonjourLibrary:
             raise Exception('ServiceExistsOn:' + str(ip_address))
     
     def get_ip(self, mac):
-        """ Returns the IP address matching MAC address mac from the list a Bonjour devices in the database
+        """Returns the IP address matching MAC address mac from the list a Bonjour devices in the database
         
         Note: `Browse Services` must have been run prior to calling this keyword
         
@@ -557,7 +597,7 @@ class BonjourLibrary:
         return ret
 
     def get_ip_for_name(self, key):
-        """ Get Application Point name from `key`.
+        """Get Application Point name from `key`.
         
         Note: `Browse Services` must be called before calling this keyword
         
