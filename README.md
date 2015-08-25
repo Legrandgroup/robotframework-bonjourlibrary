@@ -12,15 +12,29 @@ keywords.
 
 This library currently only works for Linux platforms.
 
-In order to browse Bonjour devices, you will need to have avahi daemon running
-on the machine where the library is running.
+In order to browse Bonjour devices, you will need to install the command
+`avahi-browse` on the machine where this library is running (on most
+distributions, this comes with package avahi-utils).
+
+By default, this library resolves IP addresses to MAC addresses. For this, it
+also requires the arping utility (and will most often also require sudo
+privileges to run arping)
 
 BonjourLibrary is open source software licensed under
 [Apache License 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
 
 ## For users
 
+### Prerequisites
+
+This library requires the following executables to be accessible:
+- avahi-browse
+- arping (if IP to MAC address is required)
+
 ### Installation
+
+To install this libary, run the `./setup.py install` command locate inside the
+repository.
 
 ### Robot Framework keywords
 
@@ -33,15 +47,31 @@ RIDE's online help) to get a detailed description of keywords).
 *Start the Bonjour/mDNS browsing session*
 
 #### `Stop`
+
 *Stop the Bonjour/mDNS browsing session*
 
+#### `Get Services`
 
-## For developpers
+*Retrieve the list of published Bonjour services*
 
-### Architecture of BonjourLibrary
+The first optional argument contains the service type to filter (eg: _http._tcp)
+The second optional argument contains the network interface to filter (eg: eth1)
+The third optional argument contains the IP version to filer (eg: ipv4)
 
-WIP
+Returns an array of services found. Each entry of the array contains a tuple
+describing one service. The tuple's element are (in order):
 
-### D-Bus messaging used between `BonjourLibrary` and `avahi-daemon`
-
-WIP
+* interface: The network interface on which the service has been discovered
+  (following the OS notation, eg: 'eth0')
+* protocol: The type of IP protocol on which the service is published ('ipv4'
+  or 'ipv6')
+* name: The human-friendy name of the service as displayed by Bonjour browsing
+  utilities
+* stype: The service type following Bonjour's convention, eg '_http._tcp'
+* domain: The domain on which the service was discovered, eg 'local'
+* hostname: The hostname of the device publishing the service (eg: blabla.local)
+* aprotocol: Unused
+* ip_address The IP address of the device publishing the service (eg:
+  '192.168.0.1' or 'fe80::1')
+* port: The TCP or UDP port on which the service is running (eg: 80)
+* txt: The TXT field associated with the service

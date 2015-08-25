@@ -151,15 +151,15 @@ class AvahiBrowseServiceEvent:
         Note: self.txt_missing_end can also be queried by using our method called continued_on_next_line()
         
         The properties that are populated inside this class are:
-        self.interface The network interface (following the OS notation, eg: 'eth0')
+        self.interface The network interface on which the service has been discovered (following the OS notation, eg: 'eth0')
         self.ip_type The type of IP protocol on which the service is published ('ipv4' or 'ipv6')
-        self.sname The service name as a string
-        self.stype The service type following Bonjour's notation, eg '_http._tcp'
-        self.domain The domain on which the services were discovered, eg 'local'
+        self.sname The human-friendy name of the service as displayed by Bonjour browsing utilities, as a string
+        self.stype The service type following Bonjour's convention, eg '_http._tcp'
+        self.domain The domain on which the service was discovered, eg 'local'
         self.event The type of avahi-browse event processed ('add' (+), 'update' (=) or 'del' (-))
         self.hostname The hostname of the device publishing the service (eg: blabla.local)
-        self.ip_addr The IP address of the device publishing (eg: '192.168.0.1' or 'fe80::1')
-        self.sport The service TCP or UDP port (eg: 80)
+        self.ip_addr The IP address of the device publishing the service (eg: '192.168.0.1' or 'fe80::1')
+        self.sport The TCP or UDP port on which the service is running (eg: 80)
         self.txt The TXT field associated with the service
         self.txt_missing_end A boolean set to True if the TXT field is a multiline value and we need more lines to terminate it
         """
@@ -524,7 +524,7 @@ class BonjourLibrary:
         =>
         | ${list} |
         
-        | Get Services | eth1 | _http._tcp |
+        | Get Services | _http._tcp | eth1 |
         =>
         | ${list} |
         """
