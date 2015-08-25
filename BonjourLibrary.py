@@ -463,25 +463,47 @@ value:%s
                 return True
         return False
         
-    def get_ip_address_from_mac_address(self, searched_mac):
+    def get_ip_address_from_mac_address(self, searched_mac, ip_type = 'all'):
         """\brief Check the IP address of a Bonjour device, given its MAC address
         
         Note: the database must have been filled with a list of devices prior to calling this method
         
         \param searched_mac The MAC address of the device to search
+        \param ip_type The version of IP searched ('ipv4', 'ipv6' or 'all' (default)
         
         \return The IP address of the device (if found)
         """
 
         searched_mac = mac_normalise(searched_mac, False)
         for key in self._database.keys():
-            mac_product = self._database[key].mac_address
-            if not mac_product is None:
-                mac_product = mac_normalise(mac_product, False)
-                if searched_mac == mac_product:
+            protocol = key[1]
+            if ip_type == 'all' or protocol == ip_type:
+                mac_product = self._database[key].mac_address
+                if not mac_product is None:
+                    mac_product = mac_normalise(mac_product, False)
+                    if searched_mac == mac_product:
+                        ip_address = self._database[key].ip_address
+                        return ip_address
+
+    def get_ip_address_from_name(self, searched_name, ip_type = 'all'):
+        """\brief Check the IP address of a Bonjour device, given its published name
+        
+        Note: the database must have been filled with a list of devices prior to calling this method
+        
+        \param searched_name The MAC address of the device to search
+        \param ip_type The version of IP searched ('ipv4', 'ipv6' or 'all' (default)
+        
+        \return The IP address of the device (if found)
+        """
+
+        for key in self._database.keys():
+            protocol = key[1]
+            if ip_type == 'all' or protocol == ip_type:
+                service_name_product = key[2]
+                if searched_name == service_name_product:
                     ip_address = self._database[key].ip_address
                     return ip_address
-
+    
 class BonjourLibrary:
     """Robot Framework Bonjour Library"""
 
@@ -546,9 +568,10 @@ class BonjourLibrary:
         return self.service_database.export_to_tuple_list()
 
     def expect_service_on_ip(self, ip_address):
-        """Test if service type `service_type` is running on device with IP address `ip_address`
+        """Test if a service has been listed on device with IP address `ip_address`
         
-        Note: `Browse Services` must have been run prior to calling this keyword
+        Note: `Get Services` must have been run prior to calling this keyword
+        To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
         
         Example:
         | Expect Service On IP | 192.168.0.1 |
@@ -558,9 +581,10 @@ class BonjourLibrary:
             raise Exception('ServiceNotFoundOn:' + str(ip_address))
 
     def expect_no_service_on_ip(self, ip_address):
-        """Test if service type `service_type` is running on device with IP address `ip_address`
+        """Test if a service is absent from device with IP address `ip_address`
         
-        Note: `Browse Services` must have been run prior to calling this keyword
+        Note: `Get Services` must have been run prior to calling this keyword
+        To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
         
         Example:
         | Expect No Service On IP | 192.168.0.1 |
@@ -569,10 +593,12 @@ class BonjourLibrary:
         if self.service_database.is_ip_address_in_db(ip_address):
             raise Exception('ServiceExistsOn:' + str(ip_address))
     
-    def get_ip(self, mac):
-        """Returns the IP address matching MAC address mac from the list a Bonjour devices in the database
+    def get_ipv4_for_mac(self, mac):
+        """Returns the IPv4 address matching MAC address mac from the list a Bonjour devices in the database
         
-        Note: `Browse Services` must have been run prior to calling this keyword
+        Note: `Get Services` must have been run prior to calling this keyword
+        
+        Return the IPv4 address or None if the MAC address was not found.
         
         Example:
         | Get IP | 00:04:74:12:00:01 |
@@ -580,20 +606,29 @@ class BonjourLibrary:
         | 169.254.47.26 |
         """
 
-        temp = self.service_database.get_ip_address_from_mac_address(mac)
-        if temp is not None:
-            ret = temp
-        else:
-            raise Exception("MachineNotFound:" + str(mac))
-        ret = unicode(ret)
-        return ret
+        return self.service_database.get_ip_address_from_mac_address(mac, ip_type='ipv4')
 
-    def get_ip_for_name(self, key):
-        """Get Application Point name from `key`.
+    def get_ipv6_for_mac(self, mac):
+        """Returns the IPv6 address matching MAC address mac from the list a Bonjour devices in the database
         
-        Note: `Browse Services` must be called before calling this keyword
+        Note: `Get Services` must have been run prior to calling this keyword
         
-        Return IP.
+        Return the IPv6 address or None if the service was not found.
+        
+        Example:
+        | Get IP | 00:04:74:12:00:01 |
+        =>
+        | fe80::204:74ff:fe12:1 |
+        """
+
+        return self.service_database.get_ip_address_from_mac_address(mac, ip_type='ipv6')
+
+    def get_ipv4_for_name(self, service_name):
+        """Get the IPv4 address for the device publishing the service `service_name`.
+        
+        Note: `Get Services` must be called before calling this keyword
+        
+        Return the IPv4 address or None if the service was not found.
         
         Example:
         | ${data} = | Check Run | ip | _http._tcp |
@@ -602,9 +637,23 @@ class BonjourLibrary:
         | ${apname} |
         """
 
-        ret = self.service_database.get_info_from_key(key)[0]
-        ret = unicode(ret)
-        return ret
+        return self.service_database.get_ip_address_from_name(service_name, ip_type='ipv4')
+
+    def get_ipv6_for_name(self, service_name):
+        """Get the IPv4 address for the device publishing the service `service_name`.
+        
+        Note: `Get Services` must be called before calling this keyword
+        
+        Return the IPv6 address or None if the service was not found.
+        
+        Example:
+        | ${data} = | Check Run | ip | _http._tcp |
+        | Get APName | ${data} |
+        =>
+        | ${apname} |
+        """
+
+        return self.service_database.get_ip_address_from_name(service_name, ip_type='ipv6')
 
 if __name__ == '__main__':
     try:
@@ -624,13 +673,19 @@ if __name__ == '__main__':
     except NameError:
         pass
 
-    MAC = '00:04:74:12:00:00'
+    MAC = 'C4:93:00:02:CA:10'
     IP = '169.254.5.18'
     #print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
     AVAHI_BROWSER = 'avahi-browse'
     BL = BonjourLibrary('local', AVAHI_BROWSER)
     input('Press enter & "Enable UPnP/Bonjour" on web interface')
     BL.get_services(service_type='_http._tcp', interface_name='eth1')
+    if IP != BL.get_ipv4_for_name('Wifi_wifi-soho_02CA10'):
+        raise Exception('Error')
+    if IP != BL.get_ipv4_for_mac(MAC):
+        raise Exception('Error')
+    #if 'fe80::21a:64ff:fe94:86a2' != BL.get_ipv6_for_mac(MAC):
+    #    raise Exception('Error')
     BL.expect_service_on_ip(IP)
     input('Press enter & "Disable UPnP/Bonjour" on web interface')
     BL.expect_no_service_on_ip(IP)
