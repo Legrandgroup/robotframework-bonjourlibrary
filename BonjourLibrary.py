@@ -69,8 +69,8 @@ def arping(ip_address, interface=None, use_sudo = True):
         if not interface is None:
             arping_cmd += ['-I', str(interface)]
         arping_cmd += [str(ip_address)]
-        print(arping_cmd)
-        proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE)
+        #~ print(arping_cmd)
+        proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))  # We also hide stderr here because sudo may complain when it cannot resolve the local machine's hostname
         result=[]
         arping_header_regexp = re.compile(r'^ARPING')
         arp_reply_template1_regexp = re.compile(r'^.*from\s+([0-9]+\.[0-9]+\.[0-9]+.[0-9]+)\s+\[([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\]')
@@ -380,6 +380,7 @@ value:%s
                 if len(mac_address_list) > 1:  # More than one MAC address... issue a warning
                     logger.warning('Got more than one MAC address for IP address ' + str(bonjour_service.ip_address) + ': ' + str(mac_address_list) + '. Using first')
                 bonjour_service.mac_address = mac_address_list[0]
+                
         self._database[key] = bonjour_service
 
     def remove(self, key):
@@ -499,7 +500,7 @@ class BonjourLibrary:
         """
 
         #ToolLibrary.run(self._avahi_daemon_exec_path, 'restart')
-        self.service_database = BonjourServiceDatabase()
+        self.service_database = BonjourServiceDatabase(resolve_mac = True)
 
     def stop(self):#Lionel: remove this keyword
         """Disconnects from the Avahi service.
@@ -546,7 +547,7 @@ class BonjourLibrary:
                 avahi_event = AvahiBrowseServiceEvent(line.split(';'))
             previous_line_continued = avahi_event.continued_on_next_line()
             if not previous_line_continued:
-                print('Getting event ' + str(avahi_event))
+                #~ print('Getting event ' + str(avahi_event))
                 if interface_name is None or avahi_event.interface == interface_name:   # Only take into account services on the requested interface (if an interface was provided)
                     self.service_database.processEvent(avahi_event)
         
