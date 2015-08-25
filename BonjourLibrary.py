@@ -347,7 +347,7 @@ value:%s
         """
 
         (interface_osname, protocol, name, stype, domain) = key
-        if self.resolve_mac:
+        if self.resolve_mac and not bonjour_service is None:
             mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=True)
             if len(mac_address_list) == 0:
                 bonjour_service.mac_address = None
@@ -355,8 +355,7 @@ value:%s
                 if len(mac_address_list) > 1:  # More than one MAC address... issue a warning
                     logger.warning('Got more than one MAC address for IP address ' + str(bonjour_service.ip_address) + ': ' + str(mac_address_list) + '. Using first')
                 bonjour_service.mac_address = mac_address_list[0]
-        if key not in self._database.keys():
-            self._database[key] = bonjour_service
+        self._database[key] = bonjour_service
 
     def remove(self, key):
         """ Remove one Bonjour service in database
@@ -371,6 +370,17 @@ value:%s
         """ reset Bonjour service in database """
 
         self._database = {}
+        
+    def processEvent(self, avahi_event):
+        key = (avahi_event.interface, avahi_event.ip_type, avahi_event.sname, avahi_event.stype, avahi_event.domain)
+        if avahi_event.event == 'add':
+            # With add events, we don't have any information about the service yet (it is not resolved)
+            self.add(key, None)
+        elif avahi_event.event == 'update':
+            bonjour_service = BonjourService(avahi_event.hostname, None, avahi_event.ip_addr, avahi_event.sport, avahi_event.txt, 0, mac_address = None)
+            self.add(key, bonjour_service)
+        else:
+            raise Exception('UnknownEvent')
         
     def export_to_tuple_list(self):
         """ Export the database to a list of tuples (so that it can be processed by RobotFramework keywords)
@@ -802,16 +812,16 @@ class BonjourLibrary:
     def __init__(self, domain='local', avahi_daemon_exec_path=None):
         self._domain = domain
         self.service_database = BonjourServiceDatabase()
-        self._avahi_daemon_exec_path = avahi_daemon_exec_path
-        self._browser = None
+        self._avahi_daemon_exec_path = avahi_daemon_exec_path   #Lionel: update to avahi-browse exec
+        self._browser = None    #Lionel: remove this
 
-    def _browse_generic(self, stype):
+    def _browse_generic(self, stype):   #Lionel: remove this function
         """ connect to DBus, reset database and browse service """
  
         self._browser.service_database.reset()
         self._browser.browse_service_type(stype)
 
-    def start(self):
+    def start(self):#Lionel: remove this keyword
         """ Connects to the Avahi service.
 
         Example:
@@ -821,7 +831,7 @@ class BonjourLibrary:
         #ToolLibrary.run(self._avahi_daemon_exec_path, 'restart')
         self._browser = BonjourWrapper(self._domain)
 
-    def stop(self):
+    def stop(self):#Lionel: remove this keyword
         """ Disconnects from the Avahi service.
 
         Example:
@@ -850,28 +860,30 @@ class BonjourLibrary:
         | ${list} |
         """
         
-        #~ stype = ''
+        stype = ''
         
-        #~ if service_type and service_type != '*':
-            #~ service_type_arg = service_type
-        #~ else:
-            #~ service_type_arg = '-a'
+        if service_type and service_type != '*':
+            service_type_arg = service_type
+        else:
+            service_type_arg = '-a'
 
-        #~ p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
+        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
 
-        #~ previous_line_continued = False
-        #~ for line in p.stdout:
-            #~ line = line.rstrip('\n')
-            #~ if previous_line_continued:
-                #~ entry.add_line(line)
-            #~ else:
-                #~ entry = AvahiBrowseServiceEvent(line.split(';'))
-            #~ previous_line_continued = entry.continued_on_next_line()
-            #~ if not previous_line_continued:
-                #~ print(str(entry))
+        previous_line_continued = False
+        for line in p.stdout:
+            line = line.rstrip('\n')
+            if previous_line_continued:
+                avahi_event.add_line(line)
+            else:
+                avahi_event = AvahiBrowseServiceEvent(line.split(';'))
+            previous_line_continued = avahi_event.continued_on_next_line()
+            if not previous_line_continued:
+                print('Getting event ' + str(avahi_event))
+                if interface_name is None or avahi_event.interface == interface_name:   # Only take into account services on the requested interface (if an interface was provided)
+                    self.service_database.processEvent(avahi_event)
         
-        self._browse_generic(service_type)
-        logger.debug('Services found: ' + str(self._browser.service_database))
+        #~ self._browse_generic(service_type)
+        logger.debug('Services found: ' + str(self.service_database))
         return self._browser.service_database.export_to_tuple_list()
 
     def expect_service_on_ip(self, ip_address):
