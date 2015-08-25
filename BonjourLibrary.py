@@ -8,16 +8,7 @@ import sys
 import time
 import os
 
-import threading
-
-import gobject
-import dbus
-import dbus.mainloop.glib
-
 import subprocess
-
-import avahi
-import avahi.ServiceTypeDatabase
 
 # The pythonic-version of arping below (using python scapy) is commented out because it cannot gain superuser rights via sudo, we should thus be root
 # This would however be more platform-independent... instead, we run the arping command (via sudo) and parse its output
@@ -260,7 +251,6 @@ class AvahiBrowseServiceEvent:
             if string.startswith('"'):	# First character is a quote
                 closedString = string.endswith('"')
         return closedString
-                
     
     def __str__(self):
         if self.event == 'add':
@@ -308,7 +298,7 @@ class BonjourService:
         if not self.mac_address is None:
             result += '(' + str(self.mac_address) + ')'
         if self.txt:
-            result += ',TXT="' + str(txt) + '"'
+            result += ',TXT=[' + str(txt) + ']'
         result += ']'
         return result
 
@@ -448,359 +438,6 @@ value:%s
                     ip_address = self._database[key].ip_address
                     return ip_address
 
-class AvahiBrowser:
-    
-    def __init__(self, bus, dbus_iface, service_type, finished_event = None, network_interface_name = None, domain = 'local'):
-        """
-        Instanciate a new set of avahi browser callbacks to parse the result of a browse
-        
-        \param bus The D-Bus object
-        \param dbus_iface The D-Bus interface to use
-        \param service_type The Bonjour service type to search
-        \param finished_event Athreading.Event object to set when browsing is complete
-        \param network_interface_name A network interface name (written with the OS interface naming convention, eg: 'eth1', or None if we need to search on all network interfaces)
-        \param domain The Bonjour domain on which to perform the search
-        """
-        self.bus = bus
-        self.dbus_iface = dbus_iface
-        self.service_type = service_type
-        self.domain = domain
-        self.finished_event = finished_event
-        if network_interface_name:
-            self.avahi_interface = self.dbus_iface.GetNetworkInterfaceIndexByName(network_interface_name)
-        else:
-            self.avahi_interface = avahi.IF_UNSPEC
-        
-        self.service_database = BonjourServiceDatabase(resolve_mac = True)
-        
-        logger.debug('Starting a new service browser on domain=' + str(self.domain) + ', service type=' + str(self.service_type))
-        browser_path = self.dbus_iface.ServiceBrowserNew(self.avahi_interface, avahi.PROTO_UNSPEC, self.service_type, self.domain, dbus.UInt32(0))
-        browser_proxy = self.bus.get_object(avahi.DBUS_NAME, browser_path)
-        browser_interface = dbus.Interface(browser_proxy, avahi.DBUS_INTERFACE_SERVICE_BROWSER)
-        browser_interface.connect_to_signal('AllForNow', self._serviceBrowserDone)
-        browser_interface.connect_to_signal('CacheExhausted', self._serviceBrowserCache)
-        browser_interface.connect_to_signal('Failure', self._serviceBrowserFailure)
-        browser_interface.connect_to_signal('Free', self._serviceBrowserFree)
-        browser_interface.connect_to_signal('ItemNew', self._serviceBrowserItemAdded)
-        browser_interface.connect_to_signal('ItemRemove', self._serviceBrowserItemRemoved)
-
-    def _serviceBrowserItemAdded(
-        self,
-        interface,
-        protocol,
-        name,
-        stype,
-        domain,
-        flags,
-        ):
-        """ add a Bonjour service in database """
-
-        logger.debug('Avahi:ItemNew')
-        (
-            interface,
-            protocol,
-            name,
-            stype,
-            domain,
-            host,
-            aprotocol,
-            address,
-            port,
-            txt,
-            flags
-        ) = self.dbus_iface.ResolveService(
-            interface,
-            protocol,
-            name,
-            stype,
-            domain,
-            avahi.PROTO_UNSPEC,
-            dbus.UInt32(0),
-            )
-        interface_osname = str(self.dbus_iface.GetNetworkInterfaceNameByIndex(interface))
-        key = (interface_osname, int(protocol), str(name), str(stype), str(domain))
-        print('_serviceBrowserItemAdded() callback: Got a new Bonjour device: ' + str(key) + ' with hostname ' + str(host) + ' at IP address ' + str(address))
-        self.service_database.add(key, BonjourService(str(host), int(aprotocol), str(address), int(port), avahi.txt_array_to_string_array(txt), long(flags), mac_address=None))
-
-    def _serviceBrowserItemRemoved(
-        self,
-        interface,
-        protocol,
-        name,
-        stype,
-        domain,
-        flags,
-        ):
-        """ remove a Bonjour service in database """
-
-        logger.debug('Avahi:ItemRemove')
-        interface_osname = self.dbus_iface.GetNetworkInterfaceNameByIndex(interface)
-        key = (interface_osname, protocol, name, stype, domain)
-        self.service_database.remove(key)
-
-    def _serviceBrowserDone(self):
-        """ no more Bonjour service """
-
-        logger.debug('Avahi:AllForNow')
-        if not self.finished_event is None:
-            self.finished_event.set()
-
-    def _serviceBrowserFailure(self, error):
-        """ avahi failure """
-
-        logger.debug('Avahi:Failure')
-        logger.warn('Error %s' % error)
-        if not self.finished_event is None:
-            self.finished_event.set()
-
-    @staticmethod
-    def _serviceBrowserFree():
-        """ free """
-
-        logger.debug('Avahi:Free')
-
-    @staticmethod
-    def _serviceBrowserCache():
-        """ cache """
-
-        logger.debug('Avahi:CacheExhausted')
-        
-    def get_service_database(self):
-        return self.service_database
-
-
-class AvahiWrapper:
-
-    """ Bonjour service base on http://avahi.org/ """
-
-    POLL_WAIT = 1 / 100
-
-    def __init__(self, domain):
-        """ DBus connection """
-
-        self._domain = domain
-        self._dbus_loop = gobject.MainLoop()
-        self._bus = dbus.SystemBus(private=True)
-        
-        wait_bus_owner_timeout = 5  # Wait for 5s to have an owner for the bus name we are expecting
-        logger.debug('Going to wait for an owner on bus name ' + avahi.DBUS_NAME)
-        while not self._bus.name_has_owner(avahi.DBUS_NAME):
-            time.sleep(0.2)
-            wait_bus_owner_timeout -= 0.2
-            if wait_bus_owner_timeout <= 0: # We timeout without having an owner for the expected bus name
-                raise Exception('No owner found for bus name ' + avahi.DBUS_NAME)
-         
-        logger.debug('Got an owner for bus name ' + avahi.DBUS_NAME)
-        gobject.threads_init()    # Allow the mainloop to run as an independent thread
-        dbus.mainloop.glib.threads_init()
-        
-        self.service_database = BonjourServiceDatabase()
-        
-        dbus_object_name = avahi.DBUS_PATH_SERVER
-        logger.debug('Going to communicate with object ' + dbus_object_name)
-
-        self._avahi_proxy = self._bus.get_object(avahi.DBUS_NAME, dbus_object_name)   # Required to attach to signals
-        self._dbus_iface = dbus.Interface(self._avahi_proxy, avahi.DBUS_INTERFACE_SERVER) # Required to invoke methods
-        
-        logger.debug("Connected to D-Bus")
-        self._dbus_loop_exit = threading.Event() # Create a new threading event that will ask the D-Bus background thread to exit
-        self._dbus_loop_exit.clear()
-
-        self._dbus_loop_continue = threading.Event() # Create a new threading event that will ask the D-Bus background thread to resume running after having been paused using 
-        self._dbus_loop_continue.clear()
-        
-        self._dbus_loop_thread = threading.Thread(target = self._loopHandleDbus)    # Start handling D-Bus messages in a background thread
-        self._dbus_loop_thread.setDaemon(True)    # D-Bus loop should be forced to terminate when main program exits
-        self._dbus_loop_thread.start()
-        
-        self._bus.watch_name_owner(avahi.DBUS_NAME, self._handleBusOwnerChanged) # Install a callback to run when the bus owner changes
-        
-        self._remote_version = ''
-        self._getversion_unlock_event = threading.Event() # Create a new threading event that will allow the GetVersionString() D-Bus call below to execute within a timed limit
-        
-        self._dbus_service_browser_lock = threading.Lock () # Lock that makes sure only one service browser exists at any specific time
-        self._dbus_service_browser_finished = threading.Event() # Threading event used to notify that all Bonjour services have been parsed by a service browser
-
-        self._getversion_unlock_event.clear()
-        
-        while (not self._dbus_loop.is_running()):
-            time.sleep(0.1)   # Wait for another 10ms for D-Bus mainloop to start running
-        
-        #logger.debug('Going to perform D-Bus request GetVersionString()')
-        self._dbus_iface.GetVersionString(reply_handler = self._getVersionUnlock, error_handler = self._getVersionError)
-        if not self._getversion_unlock_event.wait(10):   # We give 4s for slave to answer the GetVersion() request
-            raise Exception('TimeoutOnGetVersion')
-        else:
-            logger.debug('Avahi version: ' + self._remote_version)
-        
-        self._getstate_unlock_event = threading.Event() # Create a new threading event that will allow the GetState() D-Bus call below to execute within a timed limit 
-
-        self._getstate_unlock_event.clear()
-        self._dbus_iface.GetState(reply_handler = self._getStateUnlock, error_handler = self._getStateError)
-        if not self._getstate_unlock_event.wait(4):   # We give an additional 4s for slave to answer the GetState() request
-            raise Exception('TimeoutOnAvahiState')
-
-        self.reset()
-
-        
-    def reset(self):
-        """
-        Reset the internal database of leases by sending a SIGHUP to dnsmasq
-        """
-        
-        pass    #self._lease_database.reset()   # Empty internal database
-        
-    def exit(self):
-        """
-        Terminate the D-Bus handlers and the D-Bus loop
-        """
-        if self._dbus_iface is None:
-            raise Exception('Method invoked on non existing D-Bus interface')
-        # Stop the dbus loop
-        self.stopDBusLoop()
-        
-    # D-Bus-related methods
-    def stopDBusLoop(self):
-        """
-        Terminate the D-Bus handlers and the D-Bus loop
-        """
-        # Notify the background thread that the mainloop should not be resumed
-        self._dbus_loop_exit.set()
-        self.pauseDBusLoop()
-        
-        self._dbus_loop = None
-    
-    def pauseDBusLoop(self):
-        if not self._dbus_loop is None:
-            self._dbus_loop.quit()
-            
-    def resumeDBusLoop(self):
-        if not self._dbus_loop is None:
-            self._dbus_loop_continue.set()
-    
-    # D-Bus-related methods
-    def _loopHandleDbus(self):
-        """
-        This method should be run within a thread... This thread's aim is to run the Glib's main loop while the main thread does other actions in the meantime
-        This methods will loop infinitely to receive and send D-Bus messages and will only stop looping when the value of self._loopDbus is set to False (or when the Glib's main loop is stopped using .quit()) 
-        """
-        logger.debug("Starting dbus mainloop")
-        while not self._dbus_loop_exit.isSet(): # If _dbus_loop_exit is set, we will just stop finish this background thread
-            self._dbus_loop.run()
-            # Our mainloop has been interrupted by an external source... check if we should exit
-            if not self._dbus_loop_exit.isSet():
-                logger.debug("Pausing dbus mainloop")
-                # We should not exit, wait until someone instructs us to resume the main loop (using the _dbus_loop_continue event)
-                self._dbus_loop_continue.wait()
-                self._dbus_loop_continue.clear()    # Clear this flag for next interruption
-                logger.debug("Resuming dbus mainloop")
-            
-        logger.debug("Stopping dbus mainloop")
-
-    def _handleBusOwnerChanged(self, new_owner):
-        """
-        Callback called when our D-Bus bus owner changes 
-        """
-        if new_owner == '':
-            logger.warn('No owner anymore for bus name ' + avahi.DBUS_NAME)
-            raise Exception('LostAvahiDaemon')
-        else:
-            pass # Owner exists
-
-    def _getVersionUnlock(self, return_value):
-        """
-        This method is used as a callback for asynchronous D-Bus method call to GetVersionString()
-        It is run as a reply_handler to unlock the wait() on _getversion_unlock_event
-        """
-        logger.debug('_getVersionUnlock() called')
-        self._remote_version = str(return_value)
-        self._getversion_unlock_event.set() # Unlock the wait() on self._getversion_unlock_event
-        
-    def _getVersionError(self, remote_exception):
-        """
-        This method is used as a callback for asynchronous D-Bus method call to GetVersion()
-        It is run as an error_handler to raise an exception when the call to GetVersion() failed
-        """
-        logger.debug('_getVersionError() called')
-        logger.error('Error on invocation of GetVersionString() to avahi daemon, via D-Bus')
-        raise Exception('ErrorOnDBusGetVersion')
-
-    def _getStateUnlock(self, return_value):
-        """
-        This method is used as a callback for asynchronous D-Bus method call to GetState()
-        It is run as a reply_handler to unlock the wait() on _getstate_unlock_event
-        """
-        #logger.debug('_getStateUnlock() called')
-        if (return_value == 2): # AVAHI_CLIENT_NO_FAIL
-            self._getstate_unlock_event.set() # Unlock the wait() on self._getstate_unlock_event
-        else:
-            self._getStateError(remote_exception = Exception('GetState returned value ' + str(return_value)))
-        
-    def _getStateError(self, remote_exception):
-        """
-        This method is used as a callback for asynchronous D-Bus method call to GetVersion()
-        It is run as an error_handler to raise an exception when the call to GetVersion() failed
-        """
-        logger.error('Error on invocation of GetState() to avahi daemon, via D-Bus')
-        raise Exception('ErrorOnDBusGetState')
-
-
-    def _wait_daemon(self, timeout=10):
-        """ wait daemon available """
-
-        maxtime = time.time() + int(timeout)
-        while True:
-            time.sleep(AvahiWrapper.POLL_WAIT)
-            if time.time() > maxtime:
-                logger.warn('Avahi dameon not available')
-                break
-            if self.get_state() == 2:  # AVAHI_CLIENT_NO_FAIL
-                logger.debug('Avahi daemon available')
-                break
-
-    def get_version(self):
-        """ get version """
-
-        return self._remote_version
-
-    def get_interface_name(self, interface_index):
-        """ get interface name from index """
-
-        return self._dbus_iface.GetNetworkInterfaceNameByIndex(interface_index)
-
-    def get_state(self):
-        """ get state """
-
-        return self._dbus_iface.GetState()
-
-    def browse_service_type(self, stype):
-        """ browse service """
-
-        if self._dbus_iface is None:
-            raise Exception('You need to connect before getting interface name')
-        try:
-            with self._dbus_service_browser_lock:
-                self.pauseDBusLoop()    # We must pause the D-Bus background thread or we may miss the first results from the ServiceBrowser created below (because callbacks for signals are not yet in place)
-                self._dbus_service_browser_finished.clear()
-                
-                browser = AvahiBrowser(bus = self._bus, dbus_iface = self._dbus_iface, service_type = stype, finished_event = self._dbus_service_browser_finished)
-                
-                self.resumeDBusLoop()   # Now we are ready to process signals, resume the D-Bus background thread
-                self._dbus_service_browser_finished.wait(30)    # Give at most 30s to get all Bonjour devices
-                self.service_database = browser.get_service_database()
-                
-        except:
-            raise Exception("DBus exception occurs in browse_service_type with type '%s' and value '%s'" % sys.exc_info()[:2])
-
-
-
-class BonjourWrapper(AvahiWrapper):
-
-    """ specialization class """
-
-    pass
-
-
 class BonjourLibrary:
 
     """ Robot Framework Bonjour Library """
@@ -809,17 +446,10 @@ class BonjourLibrary:
     ROBOT_LIBRARY_SCOPE = 'GLOBAL'
     ROBOT_LIBRARY_VERSION = '1.0'
 
-    def __init__(self, domain='local', avahi_daemon_exec_path=None):
+    def __init__(self, domain='local', avahi_browse_exec_path=None):
         self._domain = domain
-        self.service_database = BonjourServiceDatabase()
-        self._avahi_daemon_exec_path = avahi_daemon_exec_path   #Lionel: update to avahi-browse exec
-        self._browser = None    #Lionel: remove this
-
-    def _browse_generic(self, stype):   #Lionel: remove this function
-        """ connect to DBus, reset database and browse service """
- 
-        self._browser.service_database.reset()
-        self._browser.browse_service_type(stype)
+        self.service_database = None
+        self._avahi_browse_exec_path = avahi_browse_exec_path
 
     def start(self):#Lionel: remove this keyword
         """ Connects to the Avahi service.
@@ -829,7 +459,7 @@ class BonjourLibrary:
         """
 
         #ToolLibrary.run(self._avahi_daemon_exec_path, 'restart')
-        self._browser = BonjourWrapper(self._domain)
+        self.service_database = BonjourServiceDatabase()
 
     def stop(self):#Lionel: remove this keyword
         """ Disconnects from the Avahi service.
@@ -838,9 +468,7 @@ class BonjourLibrary:
         | Stop |
         """
 
-        self._browser.exit()
-        self._browser = None
-        #ToolLibrary.run(self._avahi_daemon_exec_path, 'stop')
+        self.service_database = None
 
     def get_services(self, service_type = '_http._tcp', interface_name = None):
         """ Get all currently published Bonjour services as a list
@@ -882,9 +510,8 @@ class BonjourLibrary:
                 if interface_name is None or avahi_event.interface == interface_name:   # Only take into account services on the requested interface (if an interface was provided)
                     self.service_database.processEvent(avahi_event)
         
-        #~ self._browse_generic(service_type)
         logger.debug('Services found: ' + str(self.service_database))
-        return self._browser.service_database.export_to_tuple_list()
+        return self.service_database.export_to_tuple_list()
 
     def expect_service_on_ip(self, ip_address):
         """ Test if service type `service_type` is running on device with IP address `ip_address`
@@ -895,7 +522,7 @@ class BonjourLibrary:
         | Expect Service On IP | 192.168.0.1 |
         """
 
-        if not self._browser.service_database.is_ip_address_in_db(ip_address):
+        if not self.service_database.is_ip_address_in_db(ip_address):
             raise Exception('ServiceNotFoundOn:' + str(ip_address))
 
     def expect_no_service_on_ip(self, ip_address):
@@ -907,7 +534,7 @@ class BonjourLibrary:
         | Expect No Service On IP | 192.168.0.1 |
         """
 
-        if self._browser.service_database.is_ip_address_in_db(ip_address):
+        if self.service_database.is_ip_address_in_db(ip_address):
             raise Exception('ServiceExistsOn:' + str(ip_address))
     
     def get_ip(self, mac):
@@ -921,7 +548,7 @@ class BonjourLibrary:
         | 169.254.47.26 |
         """
 
-        temp = self._browser.service_database.get_ip_address_from_mac_address(mac)
+        temp = self.service_database.get_ip_address_from_mac_address(mac)
         if temp is not None:
             ret = temp
         else:
@@ -943,11 +570,9 @@ class BonjourLibrary:
         | ${apname} |
         """
 
-        ret = self._browser.service_database.get_info_from_key(key)[0]
+        ret = self.service_database.get_info_from_key(key)[0]
         ret = unicode(ret)
         return ret
-
-dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)    # Use Glib's mainloop as the default loop for all subsequent code
 
 if __name__ == '__main__':
     try:
@@ -969,9 +594,9 @@ if __name__ == '__main__':
 
     MAC = '00:04:74:12:00:00'
     IP = '169.254.5.18'
-    print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
-    AVAHI_DAEMON = '/etc/init.d/avahi-daemon'
-    BL = BonjourLibrary('local', AVAHI_DAEMON)
+    #print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
+    AVAHI_BROWSER = 'avahi-browse'
+    BL = BonjourLibrary('local', AVAHI_BROWSER)
     BL.start()
     BL.stop()
     BL.start()
