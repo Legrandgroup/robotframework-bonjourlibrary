@@ -1,8 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-""" Legrand MP5B """
-
 from __future__ import division
 
 import re
@@ -149,6 +147,145 @@ def mac_normalise(mac, unix_format=True):
     else:
         delim=''
     return delim.join(select)
+
+class AvahiBrowseServiceEvent:
+    
+    def __init__(self, entry_array):
+        if entry_array is None:
+            raise Exception('InvalidEntry')
+        type = entry_array[0]
+        if type == '+' or type == '=':
+            self._input = entry_array
+            if ((type == '+' and len(entry_array) != 6) or (type == '=' and len(entry_array) != 10)):
+                raise Exception('InvalidEntry')
+            self.interface = entry_array[1]
+            if entry_array[2] == 'IPv4':
+                self.ip_type = 'ipv4'
+            elif entry_array[2] == 'IPv6':
+                self.ip_type = 'ipv6'
+            else:
+                raise Exception('InvalidIPType:' + entry_array[2])
+            
+            self.sname = AvahiBrowseServiceEvent.unescape_avahibrowse_string(entry_array[3])
+            #self.sname = unicode(self.sname, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
+            self.stype = AvahiBrowseServiceEvent.convert_to_raw_service_type(entry_array[4])
+            self.domain = entry_array[5]
+            if type == '=':	# '=' means resolved service so we get a bit more details on those lines
+                self.hostname = entry_array[6]
+                self.ip_addr = entry_array[7]
+                self.sport = int(entry_array[8])
+                self.txt = AvahiBrowseServiceEvent.unescape_avahibrowse_txt_array(entry_array[9])
+                #~ self.txt = unicode(self.txt, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
+                self.txt_missing_end = not AvahiBrowseServiceEvent.isClosedString(self.txt)
+                self.event = 'update'
+            else:
+                self.hostname = None
+                self.ip_addr = None
+                self.sport = None
+                self.txt = None
+                self.txt_missing_end = False
+                self.event = 'add'
+        else:
+            raise Exception('UnknownType:' + type)
+    
+    def continued_on_next_line(self):
+        return self.txt_missing_end
+        
+    def add_line(self, line):
+        if not self.txt_missing_end:
+            raise Exception('ExtraInputLine')
+        else:
+            #~ line = unicode(line, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
+            self.txt += '\n' + line	# Re-insert the carriage return and continue the string
+            self.txt_missing_end = not AvahiBrowseServiceEvent.isClosedString(self.txt)
+    
+    @staticmethod
+    def unescape_avahibrowse_string(input):
+        output = ''
+        espace_pos = input.find('\\')
+        while espace_pos != -1:
+            new_chunk = input[espace_pos+1:]
+            output += input[:espace_pos]
+            #print(output + '==>' + new_chunk)
+            try:
+                escaped_char = int(new_chunk[0]) * 100 + int(new_chunk[1]) * 10 + int(new_chunk[2])	# Fetch 3 following digits and convert them to a decimal value
+                output += chr(escaped_char)	# Append escaped character to output (note: if escaped_char is not a byte (>255 for example), an exception will be raised here
+                new_chunk = new_chunk[3:]	# Skip the 3 characters that make the escaped ASCII value
+            except:
+                output += '\\'	# This was not an escaped character... re-insert the '\'
+            
+            input = new_chunk
+            espace_pos = input.find('\\')
+        
+        output += input
+        return output
+    
+    @staticmethod
+    def unescape_avahibrowse_txt_array(input):
+        output = input
+        return output
+        
+    @staticmethod
+    def convert_to_raw_service_type(input):
+        if input == 'Web Site':
+            output = '_http._tcp'
+        elif input == 'Workstation':
+            output = '_workstation._tcp'
+        elif input == 'VNC Remote Access':
+            output = '_rfb._tcp.'
+        elif input == 'Remote Disk Management':
+            output = '_udisks-ssh._tcp.'
+        elif input == 'Apple File Sharing':
+            output = '_afpovertcp._tcp.'
+        elif input == 'UNIX Printer':
+            output = '_printer._tcp.'
+        elif input == 'Internet Printer':
+            output = '_ipp._tcp.'
+        elif input == 'PDL Printer':
+            output = '_pdl-datastream._tcp.'
+        else:
+            output = input
+        return output
+        
+    @staticmethod
+    def isClosedString(string):
+        """
+        \brief Checks if \p string is complete (not continuing on another line)
+        
+        \param string The input string to check
+        \return True if the string is complete and does not need a closing quote
+        """
+        closedString = True
+        if len(string)>=1:	# There is at least one character
+            if string.startswith('"'):	# First character is a quote
+                closedString = string.endswith('"')
+        return closedString
+                
+    
+    def __str__(self):
+        if self.event == 'add':
+            output = '+'
+        elif self.event == 'update':
+            output = '!'
+        elif self.event == 'del':
+            output = '-'
+        else:
+            output = '?'
+        output += '[if=' + str(self.interface) + ']: "' + str(self.sname) + '"'
+        if self.ip_addr:
+            output += ' '+ str(self.ip_addr)
+        if self.hostname:
+            output += '(' + str(self.hostname)
+        if self.sport:
+            output += ':' + str(self.sport)
+        if self.hostname:
+            output += ')'
+        if self.txt:
+            output += ' TXT=[' + self.txt
+            if self.continued_on_next_line():
+                output += '(misssing end)'
+            output += ']'
+        return output
 
 class BonjourService:
     """ Description of a Bonjour service (this is a data container without any method (the equivalent of a C-struct))
@@ -664,6 +801,7 @@ class BonjourLibrary:
 
     def __init__(self, domain='local', avahi_daemon_exec_path=None):
         self._domain = domain
+        self.service_database = BonjourServiceDatabase()
         self._avahi_daemon_exec_path = avahi_daemon_exec_path
         self._browser = None
 
@@ -711,7 +849,27 @@ class BonjourLibrary:
         =>
         | ${list} |
         """
+        
+        #~ stype = ''
+        
+        #~ if service_type and service_type != '*':
+            #~ service_type_arg = service_type
+        #~ else:
+            #~ service_type_arg = '-a'
 
+        #~ p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
+
+        #~ previous_line_continued = False
+        #~ for line in p.stdout:
+            #~ line = line.rstrip('\n')
+            #~ if previous_line_continued:
+                #~ entry.add_line(line)
+            #~ else:
+                #~ entry = AvahiBrowseServiceEvent(line.split(';'))
+            #~ previous_line_continued = entry.continued_on_next_line()
+            #~ if not previous_line_continued:
+                #~ print(str(entry))
+        
         self._browse_generic(service_type)
         logger.debug('Services found: ' + str(self._browser.service_database))
         return self._browser.service_database.export_to_tuple_list()
