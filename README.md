@@ -42,14 +42,6 @@ The following RobotFramework keywords are made available by this library:
 Note: it is advised to go directly inside the python code's docstrings (or via
 RIDE's online help) to get a detailed description of keywords).
 
-#### `Start`
-
-*Start the Bonjour/mDNS browsing session*
-
-#### `Stop`
-
-*Stop the Bonjour/mDNS browsing session*
-
 #### `Get Services`
 
 *Retrieve the list of published Bonjour services*
