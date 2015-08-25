@@ -342,13 +342,15 @@ class BonjourService:
 class BonjourServiceDatabase:
     """Bonjour service database"""
     
-    def __init__(self, resolve_mac = False):
+    def __init__(self, resolve_mac = False, use_sudo_for_arping = True):
         """Initialise an empty BonjourServiceDatabase
         
         \param resolve_mac If True, we will also resolve each entry to store the MAC address of the device together with its IP address
+        \param use_sudo_for_arping Use sudo when calling arping (only used if resolve_mac is True)
         """
         self._database = {}
         self.resolve_mac = resolve_mac
+        self.use_sudo_for_arping = use_sudo_for_arping
 
     def __repr__(self):
         temp = ''
@@ -373,7 +375,7 @@ value:%s
 
         (interface_osname, protocol, name, stype, domain) = key
         if self.resolve_mac and not bonjour_service is None:
-            mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=True)
+            mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=self.use_sudo_for_arping)
             if len(mac_address_list) == 0:
                 bonjour_service.mac_address = None
             else:
@@ -487,49 +489,37 @@ class BonjourLibrary:
     ROBOT_LIBRARY_SCOPE = 'GLOBAL'
     ROBOT_LIBRARY_VERSION = '1.0'
 
-    def __init__(self, domain='local', avahi_browse_exec_path=None):
+    def __init__(self, domain='local', avahi_browse_exec_path=None, use_sudo_for_arping=True):
         self._domain = domain
         self.service_database = None
         self._avahi_browse_exec_path = avahi_browse_exec_path
+        self._use_sudo_for_arping = use_sudo_for_arping
 
-    def start(self):#Lionel: remove this keyword
-        """Connects to the Avahi service.
-
-        Example:
-        | Start |
-        """
-
-        #ToolLibrary.run(self._avahi_daemon_exec_path, 'restart')
-        self.service_database = BonjourServiceDatabase(resolve_mac = True)
-
-    def stop(self):#Lionel: remove this keyword
-        """Disconnects from the Avahi service.
-
-        Example:
-        | Stop |
-        """
-
-        self.service_database = None
-
-    def get_services(self, service_type = '_http._tcp', interface_name = None):
+    def get_services(self, service_type = '_http._tcp', interface_name = None, ip_type = None, resolve_ip = True):
         """Get all currently published Bonjour services as a list
         
         First (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
         Second (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
+        Third (optional) argument `ip_type` is the type of IP protocol to filter our (eg: `ipv6`, or `ipv4`, the default values being any IP version)
+        Fourth (optional) argument `resolve_ip` will also include the MAC address of devices in results (default value is to resolve IP addresses)
         
         Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address) 
         
         Example:
         | Get Services | _http._tcp |
         =>
-        | ${list} |
+        | @{list} |
         
         | Get Services | _http._tcp | eth1 |
         =>
-        | ${list} |
+        | @{list} |
+        
+        | Get Services | _http._tcp | eth1 | ipv6 |
+        =>
+        | @{list} |
         """
         
-        stype = ''
+        self.service_database = BonjourServiceDatabase(resolve_mac = resolve_ip, use_sudo_for_arping = self._use_sudo_for_arping)
         
         if service_type and service_type != '*':
             service_type_arg = service_type
@@ -549,7 +539,8 @@ class BonjourLibrary:
             if not previous_line_continued:
                 #~ print('Getting event ' + str(avahi_event))
                 if interface_name is None or avahi_event.interface == interface_name:   # Only take into account services on the requested interface (if an interface was provided)
-                    self.service_database.processEvent(avahi_event)
+                    if ip_type is None or avahi_event.ip_type == ip_type:   # Only take into account services running on the requested IP stack (if an IP version was provided)
+                        self.service_database.processEvent(avahi_event)
         
         logger.debug('Services found: ' + str(self.service_database))
         return self.service_database.export_to_tuple_list()
@@ -638,9 +629,6 @@ if __name__ == '__main__':
     #print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
     AVAHI_BROWSER = 'avahi-browse'
     BL = BonjourLibrary('local', AVAHI_BROWSER)
-    BL.start()
-    BL.stop()
-    BL.start()
     input('Press enter & "Enable UPnP/Bonjour" on web interface')
     BL.get_services(service_type='_http._tcp', interface_name='eth1')
     BL.expect_service_on_ip(IP)
