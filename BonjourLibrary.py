@@ -476,7 +476,7 @@ value:%s
         """\brief Check the IP address of a Bonjour device, given its MAC address
         
         Note: the database must have been filled with a list of devices prior to calling this method
-        An exception will be raised if there is more than one match... None will be returned if there is no match
+        An exception will be raised if there are two different matches in the db... None will be returned if there is no match
         
         \param searched_mac The MAC address of the device to search
         \param ip_type The version of IP searched ('ipv4', 'ipv6' or 'all' (default)
@@ -497,7 +497,7 @@ value:%s
                         ip_address = self._database[key].ip_address
                         if match is None:
                             match = ip_address
-                        else: # Error... there are two matching entries
+                        elif match == ip_address: # Error... there are two matching entries, with different IP addresses!
                             raise Exception('DuplicateMACAddress')
         return match
 
@@ -505,7 +505,7 @@ value:%s
         """\brief Check the IP address of a Bonjour device, given its published name
         
         Note: the database must have been filled with a list of devices prior to calling this method
-        An exception will be raised if there is more than one match... None will be returned if there is no match
+        An exception will be raised if there are two different matches in the db... None will be returned if there is no match
         
         \param searched_name The MAC address of the device to search
         \param ip_type The version of IP searched ('ipv4', 'ipv6' or 'all' (default)
@@ -522,7 +522,7 @@ value:%s
                     ip_address = self._database[key].ip_address
                     if match is None:
                         match = ip_address
-                    else: # Error... there are two matching entries
+                    elif match == ip_address: # Error... there are two matching entries, with different IP addresses!
                         raise Exception('DuplicateServiceName')
         return match
     
@@ -611,7 +611,7 @@ class BonjourLibrary:
             raise Exception('ServiceExistsOn:' + str(ip_address))
     
     def get_ipv4_for_mac(self, mac):
-        """Returns the IPv4 address matching MAC address mac from the list a Bonjour devices in the database
+        """Returns the IPv4 address matching MAC address from the list a Bonjour devices in the database
         
         Note: The search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
         If there is more than one IPv4 address matching with the MAC address, an exception will be raised (unlikely except if there is an IP address update in the middle of `Get Services`)
