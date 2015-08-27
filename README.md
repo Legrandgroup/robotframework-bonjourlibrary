@@ -127,3 +127,40 @@ If more than one service matches the requested service name, an exception will b
 *Import a service result list (previously returned by `Get Services` in order to work again/filter/extract from that list*
 
 Will raise an exception of the list is not correctly formatted
+
+### Robot Framework future keywords?
+
+This lists keywords that might be implemented in the future if required.
+
+`Clear Results`
+*Empty a result cache as set by `Get Services` or `Import Results`*
+
+`Wait For Service Name`
+*Wait (until a timeout) for a service named xxxx published*
+
+`Wait For No Service Name`
+*Wait (until a timeout) for a service named xxxx to stop being published*
+
+`Wait For Bonjour On IP`
+*Wait for a device to publish at least one service*
+
+`Wait For No Bonjour On IP`
+*Wait for a device to stop publish any service*
+
+`Wait For Bonjour On MAC`
+*Wait for a device to publish at least one service*
+
+`Wait For No Bonjour On MAC`
+*Wait for a device to stop publish any service*
+
+`Details For Service Name`
+*Get the whole service details (tuple) based on a service name (and optionally a service name (recommended) and optionnally a host specified by either its MAC address of IP address)*
+
+`Details For Service Type`
+*Get the whole service details (tuple) based on a service type (and optionally a port (recommended) and optionnally a host specified by either its MAC address of IP address)*
+
+`Get All Services For IP`
+*Filtering version of `Get Services` only returning entries for a specific IP address*
+
+`Get All Services For MAC`
+*Filtering version of `Get Services` only returning entries for a specific MAC address... will obviously have MAC resolution on results*
