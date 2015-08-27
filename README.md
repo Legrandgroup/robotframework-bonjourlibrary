@@ -46,12 +46,13 @@ RIDE's online help) to get a detailed description of keywords).
 
 *Retrieve the list of published Bonjour services*
 
-The first optional argument contains the service type to filter (eg: _http._tcp)
-The second optional argument contains the network interface to filter (eg: eth1)
-The third optional argument contains the IP version to filer (eg: ipv4)
+The first (optional) argument is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
+The second (optional) argument is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
+The third (optional) argument is the type of IP protocol to filter our (eg: `ipv6`, or `ipv4`, the default values being any IP version)
+If the fourth (optional) argument is set to tru, we will also include the MAC address of devices in results (default value is to resolve IP addresses)
 
-Returns an array of services found. Each entry of the array contains a tuple
-describing one service. The tuple's element are (in order):
+Return a list of services found on the network
+Each entry of the list will contain a tuple describing a service. The tuple's element are (in order).
 
 * interface: The network interface on which the service has been discovered
   (following the OS notation, eg: 'eth0')
@@ -67,3 +68,63 @@ describing one service. The tuple's element are (in order):
   '192.168.0.1' or 'fe80::1')
 * port: The TCP or UDP port on which the service is running (eg: 80)
 * txt: The TXT field associated with the service
+
+#### `Expect Service On IP`
+
+*Test if at lease one service exists on a device with a specific IP address*
+
+Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
+To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
+
+#### `Expect No Service On IP`
+
+*Test if a service is absent from a device with the specific IP address*
+
+Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
+To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
+
+#### `Get IPv4 For MAC`
+
+*Returns the IPv4 address of a Bonjour device matching MAC address
+
+Note: the search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
+We can only search devices which did publish a Bonjour service that was in the filter of a call to `Get Services`
+In order to use this keyword, you will need to request IP to MAC address resolution (4th argument of `Get Services`)
+
+If there is more than one IPv4 address matching with the MAC address, an exception will be raised (unlikely except if there is an IP address update in the middle of `Get Services`)
+
+#### `Get IPv6 For MAC`
+
+*Returns the IPv6 address of a Bonjour device matching MAC address
+
+Note: the search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
+We can only search devices which did publish a Bonjour service that was in the filter of a call to `Get Services`
+In order to use this keyword, you will need to request IP to MAC address resolution (4th argument of `Get Services`)
+
+If there is more than one IPv6 address matching with the MAC address, an exception will be raised (unlikely except if there is an IP address update in the middle of `Get Services`)
+
+#### `Get IPv4 For Service Name`
+
+*Get the IPv4 address for the device publishing a specific service*
+
+Note: The search will be performed on the service cache so `Get Services` or `Import Results` must be called before calling this keyword
+
+Return the IPv4 address or None if the service was not found.
+
+If more than one service matches the requested service name, an exception will be raised
+
+#### `Get IPv6 For Service Name`
+
+*Get the IPv6 address for the device publishing a specific service*
+
+Note: The search will be performed on the service cache so `Get Services` or `Import Results` must be called before calling this keyword
+
+Return the IPv6 address or None if the service was not found.
+
+If more than one service matches the requested service name, an exception will be raised
+
+#### `Import Results`
+
+*Import a service result list (previously returned by `Get Services` in order to work again/filter/extract from that list*
+
+Will raise an exception of the list is not correctly formatted
