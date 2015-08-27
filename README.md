@@ -63,7 +63,6 @@ Each entry of the list will contain a tuple describing a service. The tuple's el
 * stype: The service type following Bonjour's convention, eg '_http._tcp'
 * domain: The domain on which the service was discovered, eg 'local'
 * hostname: The hostname of the device publishing the service (eg: blabla.local)
-* aprotocol: Unused
 * ip_address The IP address of the device publishing the service (eg:
   '192.168.0.1' or 'fe80::1')
 * port: The TCP or UDP port on which the service is running (eg: 80)

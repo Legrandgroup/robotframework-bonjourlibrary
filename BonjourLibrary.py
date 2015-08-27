@@ -317,9 +317,8 @@ class AvahiBrowseServiceEvent:
 class BonjourService:
     """Description of a Bonjour service (this is a data container without any method (the equivalent of a C-struct))"""
     
-    def __init__(self, hostname, aprotocol, ip_address, port, txt, flags, mac_address = None):
+    def __init__(self, hostname, ip_address, port, txt, flags, mac_address = None):
         self.hostname = hostname
-        self.aprotocol = aprotocol
         self.ip_address = ip_address
         self.mac_address = mac_address
         self.port = port
@@ -408,7 +407,7 @@ value:%s
             # With add events, we don't have any information about the service yet (it is not resolved)
             self.add(key, None)
         elif avahi_event.event == 'update':
-            bonjour_service = BonjourService(avahi_event.hostname, None, avahi_event.ip_addr, avahi_event.sport, avahi_event.txt, 0, mac_address = None)
+            bonjour_service = BonjourService(avahi_event.hostname, avahi_event.ip_addr, avahi_event.sport, avahi_event.txt, 0, mac_address = None)
             self.add(key, bonjour_service)
         else:
             raise Exception('UnknownEvent')
@@ -416,7 +415,7 @@ value:%s
     def export_to_tuple_list(self):
         """\brief Export this database to a list of tuples (so that it can be processed by RobotFramework keywords)
         
-        \return A list of tuples containing (interface, protocol, name, stype, domain, hostname, aprotocol, ip_address, sport, txt, flags, mac_address) 
+        \return A list of tuples containing (interface, protocol, name, stype, domain, hostname, ip_address, sport, txt, flags, mac_address)
         """
         export = []
         try:
@@ -427,24 +426,23 @@ value:%s
         for (key, bonjour_service) in records:
             (interface_osname, protocol, name, stype, domain) = key
             hostname = bonjour_service.hostname
-            aprotocol = bonjour_service.aprotocol
             ip_address = bonjour_service.ip_address
             port = bonjour_service.port
             txt = bonjour_service.txt
             flags = bonjour_service.flags
             mac_address = bonjour_service.mac_address
-            export += [(interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address)]
+            export += [(interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)]
         
         return export
         
     def import_from_tuple(self, tuple):
         """\brief Import a record into this database from a tuples
         
-        \param tuple A tuple containing (interface, protocol, name, stype, domain, hostname, aprotocol, ip_address, sport, txt, flags, mac_address), as exported into a list using export_to_tuple_list() for example 
+        \param tuple A tuple containing (interface, protocol, name, stype, domain, hostname, ip_address, sport, txt, flags, mac_address), as exported into a list using export_to_tuple_list() for example 
         """
-        (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address) = tuple
+        (interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address) = tuple
         key = (interface_osname, protocol, name, stype, domain)
-        bonjour_service = BonjourService(hostname, aprotocol, ip_address, port, txt, flags)
+        bonjour_service = BonjourService(hostname, ip_address, port, txt, flags)
         self.add(key, bonjour_service)
 
     def is_ip_address_in_db(self, ip_address):
@@ -547,7 +545,7 @@ class BonjourLibrary:
         Third (optional) argument `ip_type` is the type of IP protocol to filter our (eg: `ipv6`, or `ipv4`, the default values being any IP version)
         Fourth (optional) argument `resolve_ip` will also include the MAC address of devices in results (default value is to resolve IP addresses)
         
-        Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address)
+        Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)
         The return value can be stored and re-used later on to rework on this service list (see keyword `Import Results`) 
         
         Example:
