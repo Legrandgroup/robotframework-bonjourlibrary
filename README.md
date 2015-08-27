@@ -84,7 +84,7 @@ To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Ser
 
 #### `Get IPv4 For MAC`
 
-*Returns the IPv4 address of a Bonjour device matching MAC address
+*Returns the IPv4 address of a Bonjour device matching MAC address*
 
 Note: the search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
 We can only search devices which did publish a Bonjour service that was in the filter of a call to `Get Services`
@@ -94,7 +94,7 @@ If there is more than one IPv4 address matching with the MAC address, an excepti
 
 #### `Get IPv6 For MAC`
 
-*Returns the IPv6 address of a Bonjour device matching MAC address
+*Returns the IPv6 address of a Bonjour device matching MAC address*
 
 Note: the search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
 We can only search devices which did publish a Bonjour service that was in the filter of a call to `Get Services`
