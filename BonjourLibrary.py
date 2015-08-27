@@ -414,7 +414,7 @@ value:%s
             raise Exception('UnknownEvent')
         
     def export_to_tuple_list(self):
-        """Export this database to a list of tuples (so that it can be processed by RobotFramework keywords)
+        """\brief Export this database to a list of tuples (so that it can be processed by RobotFramework keywords)
         
         \return A list of tuples containing (interface, protocol, name, stype, domain, hostname, aprotocol, ip_address, sport, txt, flags, mac_address) 
         """
@@ -437,6 +437,15 @@ value:%s
         
         return export
         
+    def import_from_tuple(self, tuple):
+        """\brief Import a record into this database from a tuples
+        
+        \param tuple A tuple containing (interface, protocol, name, stype, domain, hostname, aprotocol, ip_address, sport, txt, flags, mac_address), as exported into a list using export_to_tuple_list() for example 
+        """
+        (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address) = tuple
+        key = (interface_osname, protocol, name, stype, domain)
+        bonjour_service = BonjourService(hostname, aprotocol, ip_address, port, txt, flags)
+        self.add(key, bonjour_service)
 
     def is_ip_address_in_db(self, ip_address):
         try:
@@ -511,7 +520,7 @@ value:%s
                 service_name_product = key[2]
                 if searched_name == service_name_product:
                     ip_address = self._database[key].ip_address
-                    if match is none:
+                    if match is None:
                         match = ip_address
                     else: # Error... there are two matching entries
                         raise Exception('DuplicateServiceName')
@@ -538,20 +547,15 @@ class BonjourLibrary:
         Third (optional) argument `ip_type` is the type of IP protocol to filter our (eg: `ipv6`, or `ipv4`, the default values being any IP version)
         Fourth (optional) argument `resolve_ip` will also include the MAC address of devices in results (default value is to resolve IP addresses)
         
-        Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address) 
+        Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, aprotocol, ip_address, port, txt, flags, mac_address)
+        The return value can be stored and re-used later on to rework on this service list (see keyword `Import Results`) 
         
         Example:
-        | Get Services | _http._tcp |
-        =>
-        | @{list} |
+        | @{result_list} = | Get Services | _http._tcp |
         
-        | Get Services | _http._tcp | eth1 |
-        =>
-        | @{list} |
+        | @{result_list} = | Get Services | _http._tcp | eth1 |
         
-        | Get Services | _http._tcp | eth1 | ipv6 |
-        =>
-        | @{list} |
+        | @{result_list} = | Get Services | _http._tcp | eth1 | ipv6 |
         """
         
         self.service_database = BonjourServiceDatabase(resolve_mac = resolve_ip, use_sudo_for_arping = self._use_sudo_for_arping)
@@ -583,7 +587,7 @@ class BonjourLibrary:
     def expect_service_on_ip(self, ip_address):
         """Test if a service has been listed on device with IP address `ip_address`
         
-        Note: `Get Services` must have been run prior to calling this keyword
+        Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
         To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
         
         Example:
@@ -596,7 +600,7 @@ class BonjourLibrary:
     def expect_no_service_on_ip(self, ip_address):
         """Test if a service is absent from device with IP address `ip_address`
         
-        Note: `Get Services` must have been run prior to calling this keyword
+        Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
         To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
         
         Example:
@@ -609,7 +613,7 @@ class BonjourLibrary:
     def get_ipv4_for_mac(self, mac):
         """Returns the IPv4 address matching MAC address mac from the list a Bonjour devices in the database
         
-        Note: The search will be performed on the service cache so `Get Services` must have been run prior to calling this keyword
+        Note: The search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
         If there is more than one IPv4 address matching with the MAC address, an exception will be raised (unlikely except if there is an IP address update in the middle of `Get Services`)
         
         Return the IPv4 address or None if the MAC address was not found.
@@ -625,7 +629,7 @@ class BonjourLibrary:
     def get_ipv6_for_mac(self, mac):
         """Returns the IPv6 address matching MAC address mac from the list a Bonjour devices in the database
         
-        Note: The search will be performed on the service cache so `Get Services` must have been run prior to calling this keyword
+        Note: The search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
         If there is more than one IPv4 address matching with the MAC address, an exception will be raised (unlikely except if there is an IP address update in the middle of `Get Services`)
         
         Return the IPv6 address or None if the service was not found.
@@ -641,7 +645,7 @@ class BonjourLibrary:
     def get_ipv4_for_service_name(self, service_name):
         """Get the IPv4 address for the device publishing the service `service_name`.
         
-        Note: The search will be performed on the service cache so `Get Services` must be called before calling this keyword
+        Note: The search will be performed on the service cache so `Get Services` or `Import Results` must be called before calling this keyword
         
         Return the IPv4 address or None if the service was not found.
         If more than one service matches \p service_name, an exception will be raised
@@ -658,7 +662,7 @@ class BonjourLibrary:
     def get_ipv6_for_service_name(self, service_name):
         """Get the IPv6 address for the device publishing the service `service_name`.
         
-        Note: The search will be performed on the service cache so `Get Services` must be called before calling this keyword
+        Note: The search will be performed on the service cache so `Get Services` or `Import Results` must be called before calling this keyword
         
         Return the IPv6 address or None if the service was not found.
         If more than one service matches \p service_name, an exception will be raised
@@ -670,7 +674,20 @@ class BonjourLibrary:
         """
 
         return self.service_database.get_ip_address_from_name(service_name, ip_type='ipv6')
-
+    
+    def import_results(self, result_list):
+        """Import a service result list (previously returned by `Get Services` in order to work again/filter/extract from that list
+        
+        Will raise an exception of the list is not correctly formatted
+        
+        Example:
+        | Import Results | @{result_list} |
+        """
+        
+        self.service_database.reset()
+        for service in result_list:
+            self.service_database.import_from_tuple(service)
+        
 if __name__ == '__main__':
     try:
         from console_logger import LOGGER as logger
@@ -689,21 +706,34 @@ if __name__ == '__main__':
     except NameError:
         pass
 
-    MAC = 'C4:93:00:02:CA:10'
-    IP = '169.254.5.18'
+    host = 'hal'
+    if host=='hal':
+        IP = '169.254.2.35'
+        MAC = '00:04:74:12:00:00'
+        exp_service = 'Wifi_wifi-soho_120000'
+    elif host=='hal2':
+        IP = '169.254.5.18'
+        MAC = 'C4:93:00:02:CA:10'
+        exp_service = 'Wifi_wifi-soho_02CA10'
+    
     #print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
     AVAHI_BROWSER = 'avahi-browse'
     BL = BonjourLibrary('local', AVAHI_BROWSER)
     input('Press enter & "Enable UPnP/Bonjour" on web interface')
-    BL.get_services(service_type='_http._tcp', interface_name='eth1')
-    if IP != BL.get_ipv4_for_service_name('Wifi_wifi-soho_02CA10'):
+    temp_cache = BL.get_services(service_type='_http._tcp', interface_name='eth1')
+    if IP != BL.get_ipv4_for_service_name(exp_service):
         raise Exception('Error')
     if IP != BL.get_ipv4_for_mac(MAC):
         raise Exception('Error')
     #if 'fe80::21a:64ff:fe94:86a2' != BL.get_ipv6_for_mac(MAC):
     #    raise Exception('Error')
     BL.expect_service_on_ip(IP)
+    BL.import_results([])  # Make sure we reset the internal DB
+    BL.expect_no_service_on_ip(IP)  # So there should be no service of course!
+    BL.import_results(temp_cache)  # Re-import previous results
+    BL.expect_service_on_ip(IP)  # We should get again the service that we found above
     input('Press enter & "Disable UPnP/Bonjour" on web interface')
+    BL.get_services(service_type='_http._tcp', interface_name='eth1')
     BL.expect_no_service_on_ip(IP)
 else:
     from robot.api import logger
