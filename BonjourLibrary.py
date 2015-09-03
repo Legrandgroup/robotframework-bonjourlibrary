@@ -5,10 +5,11 @@ from __future__ import division
 
 import re
 import sys
-import time
 import os
 
 import subprocess
+
+import threading
 
 # The pythonic-version of arping below (using python scapy) is commented out because it cannot gain superuser rights via sudo, we should thus be root
 # This would however be more platform-independent... instead, we run the arping command (via sudo) and parse its output
@@ -79,6 +80,7 @@ def arping(ip_address, interface=None, use_sudo = True):
         arping_mac_addr = None
         for line in iter(proc.stdout.readline,''):
             line = line.rstrip()
+            #print('arping:"' + str(line) + '"')
             if not re.match(arping_header_regexp, line):    # Skip the header from arping
                 match = re.match(arp_reply_template1_regexp, line)
                 if match:
@@ -92,6 +94,9 @@ def arping(ip_address, interface=None, use_sudo = True):
                     break
             
         if not arping_mac_addr is None:
+            if not arping_ip_addr is None:
+                if arping_ip_addr != str(ip_address):
+                    logger.warning('Got a mismatch on IP address reply from arping: Expected ' + str(ip_address) + ', got ' + arping_ip_addr)
             result+=[arping_mac_addr]
         
         exitvalue = proc.wait()
@@ -537,6 +542,35 @@ class BonjourLibrary:
         self._avahi_browse_exec_path = avahi_browse_exec_path
         self._use_sudo_for_arping = use_sudo_for_arping
 
+    def _parse_avahi_browse_output(self, avahi_browse_process, interface_name_filter = None, ip_type_filter = None, event_callback = None):
+        """Parse the output of an existing avahi-browse command (run with -p option) and update self.service_database accordingly until the subprocess terminates
+        \param avahi_browse_process A subprocess.Popen object for which we will process the output
+        \param interface_name_filter If not None, we will only process services on this interface name
+        \param ip_type_filter If not None, we will only process services with this IP type
+        \param event_callback If not None, we will call this function for each database update, giving it the new AvahiBrowseServiceEvent as argument
+        """
+        previous_line_continued = False
+        avahi_event = None
+        print('Going to parse output of process PID ' + str(avahi_browse_process.pid))
+        # We cannot use stdout iterator as usual here, because it adds some buffering on the subprocess stdout that will not provide us the output lines in real-time
+        line = avahi_browse_process.stdout.readline()
+        while line:
+            line = line.rstrip('\n')
+            #print('avahi-browse:"' + line + '"')
+            if previous_line_continued:
+                avahi_event.add_line(line)
+            else:
+                avahi_event = AvahiBrowseServiceEvent(line.split(';'))
+            previous_line_continued = avahi_event.continued_on_next_line()
+            if not previous_line_continued:
+                #~ print('Getting event ' + str(avahi_event))
+                if interface_name_filter is None or avahi_event.interface == interface_name_filter:   # Only take into account services on the requested interface (if an interface was provided)
+                    if ip_type_filter is None or avahi_event.ip_type == ip_type_filter:   # Only take into account services running on the requested IP stack (if an IP version was provided)
+                        self.service_database.processEvent(avahi_event)
+                        if not event_callback is None and hasattr(event_callback, '__call__'):
+                            event_callback(avahi_event) # If there is a callback to trigger when an event is processed, also run the callback
+            line = avahi_browse_process.stdout.readline()
+        
     def get_services(self, service_type = '_http._tcp', interface_name = None, ip_type = None, resolve_ip = True):
         """Get all currently published Bonjour services as a list
         
@@ -564,24 +598,97 @@ class BonjourLibrary:
             service_type_arg = '-a'
 
         p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
-
-        previous_line_continued = False
-        for line in p.stdout:
-            line = line.rstrip('\n')
-            if previous_line_continued:
-                avahi_event.add_line(line)
-            else:
-                avahi_event = AvahiBrowseServiceEvent(line.split(';'))
-            previous_line_continued = avahi_event.continued_on_next_line()
-            if not previous_line_continued:
-                #~ print('Getting event ' + str(avahi_event))
-                if interface_name is None or avahi_event.interface == interface_name:   # Only take into account services on the requested interface (if an interface was provided)
-                    if ip_type is None or avahi_event.ip_type == ip_type:   # Only take into account services running on the requested IP stack (if an IP version was provided)
-                        self.service_database.processEvent(avahi_event)
+        self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type)
         
         logger.debug('Services found: ' + str(self.service_database))
         return self.service_database.export_to_tuple_list()
+    
+    def wait_for_service_name(self, expected_service_name, timeout = None, service_type = '_http._tcp', interface_name = None, ip_type = None,  resolve_ip = True):
+        """Wait for a service named \p service_name to be published by a device
+        
+        First argument `expected_service_name` is the name of the service expected
+        Second (optional) argument `timeout` is the timeout for this service to be published (if None, we will wait forever)
+        Third (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
+        Forth (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
+        Fifth (optional) argument `ip_type` is the type of IP protocol to filter our (eg: `ipv6`, or `ipv4`, the default values being any IP version)
+        Sixth (optional) argument `resolve_ip` will also include the MAC address of devices in results (default value is to resolve IP addresses)
+        
+        Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)
+        The return value can be stored and re-used later on to rework on this service list (see keyword `Import Results`) 
+        
+        Example:
+        | @{result_list} = | Get Services | _http._tcp |
+        
+        | @{result_list} = | Get Services | _http._tcp | eth1 |
+        
+        | @{result_list} = | Get Services | _http._tcp | eth1 | ipv6 |
+        """
 
+        #Lionel: FIXME: use arping as selected by caller self.service_database = BonjourServiceDatabase(resolve_mac = resolve_ip, use_sudo_for_arping = self._use_sudo_for_arping)
+        self.service_database = BonjourServiceDatabase(resolve_mac = False, use_sudo_for_arping = self._use_sudo_for_arping)
+        
+        if service_type and service_type != '*':
+            service_type_arg = service_type
+        else:
+            service_type_arg = '-a'
+
+        print('Running command ' + str(['avahi-browse', '-p', '-r', '-t', service_type_arg]))
+        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-t',  service_type_arg], stdout=subprocess.PIPE)
+        
+        class SubThreadEnv():
+            def __init__(self):
+                self.nb_services_match_seen = 0 # How many services were discovered (matching the searched pattern)?
+                self.nb_services_match_resolved = 0 # How many services were resolved (matching the searched pattern)?
+                self. searched_service_found = threading.Event()  # Have we discovered at least one service matching the searched pattern?
+                searched_service_all_resolved = threading.Event() # Have we resolved all discovered services matching the searched pattern?
+        
+        _subthread_env = SubThreadEnv()
+        
+        def new_event_callback(event):
+            """Function callback triggered when a new event is read from subprocess avahi-browse. It will check if the event matches the service we are waiting for and set searched_service_found if so
+            """
+            print('Getting new event for service name ' + str(event.sname))
+            if event.sname == expected_service_name:
+                # Got an event for the service we are watching... check it exists or is added (not deleted)
+                if event.event == 'add': # The service is currently on, this is what we expected
+                    _subthread_env.nb_services_match_seen += 1
+                    print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
+                    _subthread_env.searched_service_found.set()
+                if event.event == 'update':
+                    _subthread_env.searched_service_all_resolved.set()
+                    print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
+                    _subthread_env.nb_services_match_resolved += 1
+                    if (_subthread_env.nb_services_match_seen == _subthread_env.nb_services_match_resolved):
+                        print('All discovered services have been resolved')
+                        _subthread_env.searched_service_found.set()
+        
+        def db_update_bg_thread():
+            print('Entering db_update_bg_thread()')
+            self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type, event_callback=new_event_callback)
+            print('Terminating db_update_bg_thread()')
+            
+        print('Starting parser thread')
+        self._avahi_browse_thread = threading.Thread(target = db_update_bg_thread)
+        self._avahi_browse_thread.setDaemon(True)    # Subprocess parser should be forced to terminate when main program exits
+        self._avahi_browse_thread.start()
+        print('Parser thread started... now waiting for event')
+        
+        _subthread_env.searched_service_found.wait(timeout)
+        
+        p.terminate()   # Terminate the avahi-browse command, in order to stop updates to the database... this will also make thread db_update_bg_thread terminate
+        
+        if (not _subthread_env.searched_service_found.is_set()):
+            msg = 'Did not get expected service'
+            if not timeout is None:
+                msg += ' after waiting ' + str(timeout) + 's'
+            logger.warning(msg)
+            raise Exception('ServiceNotFound:' + str(expected_service_name))
+
+        p.wait()    # Wait until the avahi-browse command finishes
+        
+        logger.debug('Services found: ' + str(self.service_database))
+        return self.service_database.export_to_tuple_list()
+    
     def expect_service_on_ip(self, ip_address):
         """Test if a service has been listed on device with IP address `ip_address`
         
@@ -730,6 +837,8 @@ if __name__ == '__main__':
     BL.expect_no_service_on_ip(IP)  # So there should be no service of course!
     BL.import_results(temp_cache)  # Re-import previous results
     BL.expect_service_on_ip(IP)  # We should get again the service that we found above
+    input('Press enter & publish a service called "Test" within 10s')
+    BL.wait_for_service_name("Test", timeout=10, service_type = '_http._tcp', interface_name='eth1')
     input('Press enter & "Disable UPnP/Bonjour" on web interface')
     BL.get_services(service_type='_http._tcp', interface_name='eth1')
     BL.expect_no_service_on_ip(IP)
