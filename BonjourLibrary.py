@@ -392,7 +392,7 @@ value:%s
         if not bonjour_service is None:
             msg += ' with details ' + str(bonjour_service)
         msg += ' to internal db'
-        logger.debug(msg))
+        logger.debug(msg)
         if self.resolve_mac and not bonjour_service is None:
             bonjour_service.mac_address = None
             if protocol == 'ipv4':
@@ -438,7 +438,7 @@ value:%s
             self.add(key, None)
         elif avahi_event.event == 'update':
             bonjour_service = BonjourService(avahi_event.hostname, avahi_event.ip_addr, avahi_event.sport, avahi_event.txt, 0, mac_address = None)
-            logger.debug('Will process update event on service ' + str(bonjour_service))
+            #logger.debug('Will process update event on service ' + str(bonjour_service))
             self.add(key, bonjour_service)
         else:
             raise Exception('UnknownEvent')
@@ -503,8 +503,9 @@ value:%s
             records = self._database.items()
         
         for (key, bonjour_service) in records:
-            if bonjour_service.ip_address == ip_address:
-                return True
+            if not bonjour_service is None:
+                if bonjour_service.ip_address == ip_address:
+                    return True
         return False
 
     def is_mac_address_in_db(self, mac_address):
@@ -517,8 +518,9 @@ value:%s
             records = self._database.items()
         
         for (key, bonjour_service) in records:
-            if bonjour_service.mac_address == mac_address:
-                return True
+            if not bonjour_service is None:
+                if bonjour_service.mac_address == mac_address:
+                    return True
         return False
         
     def get_ip_address_from_mac_address(self, searched_mac, ip_type = 'all'):
@@ -539,15 +541,17 @@ value:%s
         for key in self._database.keys():
             protocol = key[1]
             if ip_type == 'all' or protocol == ip_type:
-                mac_product = self._database[key].mac_address
-                if not mac_product is None:
-                    mac_product = mac_normalise(mac_product, False)
-                    if searched_mac == mac_product:
-                        ip_address = self._database[key].ip_address
-                        if match is None:
-                            match = ip_address
-                        elif match == ip_address: # Error... there are two matching entries, with different IP addresses!
-                            raise Exception('DuplicateMACAddress')
+                bonjour_service = self._database[key]
+                if not bonjour_service is None:
+                    mac_product = bonjour_service.mac_address
+                    if not mac_product is None:
+                        mac_product = mac_normalise(mac_product, False)
+                        if searched_mac == mac_product:
+                            ip_address = self._database[key].ip_address
+                            if match is None:
+                                match = ip_address
+                            elif match == ip_address: # Error... there are two matching entries, with different IP addresses!
+                                raise Exception('DuplicateMACAddress')
         return match
 
     def get_ip_address_from_name(self, searched_name, ip_type = 'all'):
@@ -563,17 +567,19 @@ value:%s
         """
 
         match = None
-        logger.debug('Searching for service "' + searched_name + '" to get its device IP type: ' + ip_type)
+        #logger.debug('Searching for service "' + searched_name + '" to get its device IP type: ' + ip_type)
         for key in self._database.keys():
             protocol = key[1]
             if ip_type == 'all' or protocol == ip_type:
                 service_name_product = key[2]
                 if searched_name == service_name_product:
-                    ip_address = self._database[key].ip_address
-                    if match is None:
-                        match = ip_address
-                    elif match == ip_address: # Error... there are two matching entries, with different IP addresses!
-                        raise Exception('DuplicateServiceName')
+                    bonjour_service = self._database[key]
+                    if not bonjour_service is None:
+                        ip_address = bonjour_service.ip_address
+                        if match is None:
+                            match = ip_address
+                        elif match == ip_address: # Error... there are two matching entries, with different IP addresses!
+                            raise Exception('DuplicateServiceName')
         return match
     
 class BonjourLibrary:
@@ -604,7 +610,7 @@ class BonjourLibrary:
         line = avahi_browse_process.stdout.readline()
         while line:
             line = line.rstrip('\n')
-            print('avahi-browse:"' + line + '"')
+            #print('avahi-browse:"' + line + '"')
             if previous_line_continued:
                 avahi_event.add_line(line)
             else:
@@ -687,6 +693,10 @@ class BonjourLibrary:
         p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
         
         class SubThreadEnv():
+            """\brief Class used to store db_update_bg_thread() environment variables
+            
+            \param expected_service_name The service name that, once detected, will make the thread declare it has done its job
+            """
             def __init__(self, expected_service_name):
                 self.nb_services_match_seen = 0 # How many services were discovered (matching the searched pattern)?
                 self.nb_services_match_resolved = 0 # How many services were resolved (matching the searched pattern)?
@@ -697,7 +707,11 @@ class BonjourLibrary:
         _subthread_env = SubThreadEnv(expected_service_name = service_name)
         
         def new_event_callback(event):
-            """Function callback triggered when a new event is read from subprocess avahi-browse. It will check if the event matches the service we are waiting for and set searched_service_found if so
+            """\brief Function callback triggered when a new event is read from subprocess avahi-browse. It will check if the event matches the service we are waiting for and set searched_service_found if so
+            
+            This function is provided as the event_callback argument of  _parse_avahi_browse_output() below
+            
+            \param event Each AvahiBrowseServiceEvent that is being processed in the database
             """
             #print('Getting new event for service name ' + str(event.sname))
             if event.sname == _subthread_env.expected_service_name:
@@ -715,6 +729,8 @@ class BonjourLibrary:
                         _subthread_env.searched_service_all_resolved.set()
         
         def db_update_bg_thread():
+            """\brief Run _parse_avahi_browse_output() (aimed to be run in a secondary thread)
+            """
             #print('Entering db_update_bg_thread()')
             self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type, event_callback=new_event_callback)
             #print('Terminating db_update_bg_thread()')
@@ -853,6 +869,7 @@ class BonjourLibrary:
         | Import Results | @{result_list} |
         """
         
+        logger.info('Manually importing the following results into the database:' + str(result_list))
         with self._service_database_mutex:
             self._service_database.reset()
             for service in result_list:
@@ -902,8 +919,8 @@ if __name__ == '__main__':
     BL.expect_no_service_on_ip(IP)  # So there should be no service of course!
     BL.import_results(temp_cache)  # Re-import previous results
     BL.expect_service_on_ip(IP)  # We should get again the service that we found above
-    input('Press enter & publish a service called "Test" within 10s')
-    BL.wait_for_service_name("Test", timeout=10, service_type = '_http._tcp', interface_name='eth1')
+    input('Press enter & publish a service called "' + exp_service + '" within 10s')
+    BL.wait_for_service_name(exp_service, timeout=10, service_type = '_http._tcp', interface_name='eth1')
     input('Press enter & "Disable UPnP/Bonjour" on web interface')
     BL.get_services(service_type='_http._tcp', interface_name='eth1')
     BL.expect_no_service_on_ip(IP)
