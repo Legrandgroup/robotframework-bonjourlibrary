@@ -41,6 +41,11 @@ def arping(ip_address, interface=None, use_sudo = True):
     
     global arping_supports_r_i
     
+    if re.match(r'\d+\.\d+\.\d+\.\d+', ip_address): # We have something that looks like an IPv4 address
+        pass
+    else:
+        raise Exception('BadIPv4Format:' + str(ip_address))
+    
     if use_sudo:
         arping_cmd_prefix = ['sudo']
     else:
@@ -70,7 +75,7 @@ def arping(ip_address, interface=None, use_sudo = True):
         if not interface is None:
             arping_cmd += ['-I', str(interface)]
         arping_cmd += [str(ip_address)]
-        #~ print(arping_cmd)
+        #print(arping_cmd)
         proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))  # We also hide stderr here because sudo may complain when it cannot resolve the local machine's hostname
         result=[]
         arping_header_regexp = re.compile(r'^ARPING')
@@ -425,7 +430,7 @@ value:%s
         for key in self._database.keys():
             name = key[2]
             if name != service_name:
-                print('Removing service named ' + name)
+                logger.debug('Removing non-required service named "' + name + "' from database")
                 del self._database[key]
         
     def export_to_tuple_list(self):
@@ -537,10 +542,13 @@ value:%s
         """
 
         match = None
+        logger.debug('Searching for service "' + searched_name + '" to get its device IP type: ' + ip_type)
         for key in self._database.keys():
             protocol = key[1]
+            print('Got protocol ' + protocol)
             if ip_type == 'all' or protocol == ip_type:
                 service_name_product = key[2]
+                print('And got service name ' + service_name_product)
                 if searched_name == service_name_product:
                     ip_address = self._database[key].ip_address
                     if match is None:
@@ -652,8 +660,8 @@ class BonjourLibrary:
         else:
             service_type_arg = '-a'
 
-        print('Running command ' + str(['avahi-browse', '-p', '-r', '-t', service_type_arg]))
-        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-t',  service_type_arg], stdout=subprocess.PIPE)
+        #print('Running command ' + str(['avahi-browse', '-p', '-r', service_type_arg]))
+        p = subprocess.Popen(['avahi-browse', '-p', '-r', service_type_arg], stdout=subprocess.PIPE)
         
         class SubThreadEnv():
             def __init__(self, expected_service_name):
@@ -668,34 +676,34 @@ class BonjourLibrary:
         def new_event_callback(event):
             """Function callback triggered when a new event is read from subprocess avahi-browse. It will check if the event matches the service we are waiting for and set searched_service_found if so
             """
-            print('Getting new event for service name ' + str(event.sname))
+            #print('Getting new event for service name ' + str(event.sname))
             if event.sname == _subthread_env.expected_service_name:
                 # Got an event for the service we are watching... check it exists or is added (not deleted)
                 if event.event == 'add': # The service is currently on, this is what we expected
                     _subthread_env.nb_services_match_seen += 1
-                    print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
+                    #print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
                     _subthread_env.searched_service_found.set()
                 if event.event == 'update':
                     _subthread_env.searched_service_all_resolved.set()
-                    print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
+                    #print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
                     _subthread_env.nb_services_match_resolved += 1
                     if (_subthread_env.nb_services_match_resolved >= _subthread_env.nb_services_match_seen):
-                        print('All discovered services have been resolved')
+                        logger.debug('All discovered services have been resolved... done')
                         _subthread_env.searched_service_all_resolved.set()
         
         def db_update_bg_thread():
-            print('Entering db_update_bg_thread()')
+            #print('Entering db_update_bg_thread()')
             self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type, event_callback=new_event_callback)
-            print('Terminating db_update_bg_thread()')
+            #print('Terminating db_update_bg_thread()')
             
-        print('Starting parser thread')
+        #print('Starting parser thread')
         self._avahi_browse_thread = threading.Thread(target = db_update_bg_thread)
         self._avahi_browse_thread.setDaemon(True)    # Subprocess parser should be forced to terminate when main program exits
         self._avahi_browse_thread.start()
-        print('Parser thread started... now waiting for event')
+        #print('Parser thread started... now waiting for event')
         
         _subthread_env.searched_service_found.wait(timeout) # Wait for the service to be published
-        print('Parser thread foudn service... now waiting for end of resolve')
+        #print('Parser thread has found the searched service... now waiting for end of resolve')
         _subthread_env.searched_service_all_resolved.wait(5)  # Give an extra 5s for the services to be resolved
         
         p.terminate()   # Terminate the avahi-browse command, in order to stop updates to the database... this will also make thread db_update_bg_thread terminate
