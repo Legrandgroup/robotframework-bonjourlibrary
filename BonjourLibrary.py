@@ -642,7 +642,7 @@ class BonjourLibrary:
         First (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
         Second (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
         Third (optional) argument `ip_type` is the type of IP protocol to filter our (eg: `ipv6`, or `ipv4`, the default values being any IP version)
-        Fourth (optional) argument `resolve_ip` will also include the MAC address of devices in results (default value is to resolve IP addresses)
+        Fourth (optional) argument `resolve_ip`, when True, will also include the MAC address of devices in results (default value is to resolve IP addresses)
         
         Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)
         The return value can be stored and re-used later on to rework on this service list (see keyword `Import Results`) 
@@ -678,9 +678,9 @@ class BonjourLibrary:
         Third (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
         Forth (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
         Fifth (optional) argument `ip_type` is the type of IP protocol to filter our (eg: `ipv6`, or `ipv4`, the default values being any IP version)
-        Sixth (optional) argument `resolve_ip` will also include the MAC address of devices in results (default value is to resolve IP addresses)
+        Sixth (optional) argument `resolve_ip`, when True, will also include the MAC address of devices in results (default value is to resolve IP addresses)
         
-        Return a list of services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)
+        Return the list of matching services found on the network (one entry per service, each service being described by a tuple containing (interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)
         The return value can be stored and re-used later on to rework on this service list (see keyword `Import Results`) 
         
         Example:
