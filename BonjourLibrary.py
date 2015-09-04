@@ -430,12 +430,20 @@ value:%s
         
         for (key, bonjour_service) in records:
             (interface_osname, protocol, name, stype, domain) = key
-            hostname = bonjour_service.hostname
-            ip_address = bonjour_service.ip_address
-            port = bonjour_service.port
-            txt = bonjour_service.txt
-            flags = bonjour_service.flags
-            mac_address = bonjour_service.mac_address
+            if bonjour_service:
+                hostname = bonjour_service.hostname
+                ip_address = bonjour_service.ip_address
+                port = bonjour_service.port
+                txt = bonjour_service.txt
+                flags = bonjour_service.flags
+                mac_address = bonjour_service.mac_address
+            else:
+                hostname = None
+                ip_address = None
+                port = None
+                txt = None
+                flags = None
+                mac_address = None
             export += [(interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)]
         
         return export
