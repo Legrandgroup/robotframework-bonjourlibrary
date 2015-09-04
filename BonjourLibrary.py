@@ -390,7 +390,7 @@ value:%s
              msg += 'unresolved '
         msg += 'service ' + str(key)
         if not bonjour_service is None:
-            msg += ' with details ' + str(bonjour_service))
+            msg += ' with details ' + str(bonjour_service)
         msg += ' to internal db'
         logger.debug(msg))
         if self.resolve_mac and not bonjour_service is None:
@@ -668,11 +668,11 @@ class BonjourLibrary:
         The return value can be stored and re-used later on to rework on this service list (see keyword `Import Results`) 
         
         Example:
-        | @{result_list} = | Get Services | _http._tcp |
+        | @{result_list} = | Wait For Service Name | Test |
         
-        | @{result_list} = | Get Services | _http._tcp | eth1 |
+        | @{result_list} = | Wait For Service Name | 20 | _http._tcp |
         
-        | @{result_list} = | Get Services | _http._tcp | eth1 | ipv6 |
+        | @{result_list} = | Wait For Service Name | 20 | _http._tcp | eth1 | ipv6 |
         """
 
         with self._service_database_mutex:
@@ -683,8 +683,8 @@ class BonjourLibrary:
         else:
             service_type_arg = '-a'
 
-        #print('Running command ' + str(['avahi-browse', '-p', '-r', service_type_arg]))
-        p = subprocess.Popen(['avahi-browse', '-p', '-r', service_type_arg], stdout=subprocess.PIPE)
+        #print('Running command ' + str(['avahi-browse', '-p', '-r', '-l,' service_type_arg]))
+        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
         
         class SubThreadEnv():
             def __init__(self, expected_service_name):
