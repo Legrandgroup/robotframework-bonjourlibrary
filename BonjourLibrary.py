@@ -385,7 +385,14 @@ value:%s
         """
 
         (interface_osname, protocol, name, stype, domain) = key
-        logger.debug('Adding service ' + str(key) + ' with details ' + str(bonjour_service))
+        msg = 'Adding '
+        if  bonjour_service is None:
+             msg += 'unresolved '
+        msg += 'service ' + str(key)
+        if not bonjour_service is None:
+            msg += ' with details ' + str(bonjour_service))
+        msg += ' to internal db'
+        logger.debug(msg))
         if self.resolve_mac and not bonjour_service is None:
             bonjour_service.mac_address = None
             if protocol == 'ipv4':
@@ -696,31 +703,32 @@ class BonjourLibrary:
             if event.sname == _subthread_env.expected_service_name:
                 # Got an event for the service we are watching... check it exists or is added (not deleted)
                 if event.event == 'add': # The service is currently on, this is what we expected
-                    print(event.event + ' received on expected service instance #' + str(_subthread_env.nb_services_match_seen))
+                    #print(event.event + ' received on expected service instance #' + str(_subthread_env.nb_services_match_seen))
                     _subthread_env.nb_services_match_seen += 1
                     _subthread_env.searched_service_found.set()
                 if event.event == 'update':
-                    _subthread_env.searched_service_all_resolved.set()
-                    print(event.event + ' received on expected service instance #' + str(_subthread_env.nb_services_match_resolved))
+                    #print(event.event + ' received on expected service instance #' + str(_subthread_env.nb_services_match_resolved))
                     _subthread_env.nb_services_match_resolved += 1
+                    #print('Comparing ' + str(_subthread_env.nb_services_match_resolved) + ' >= ' + str(_subthread_env.nb_services_match_seen))
                     if (_subthread_env.nb_services_match_resolved >= _subthread_env.nb_services_match_seen):
                         logger.debug('All discovered services have been resolved... done')
                         _subthread_env.searched_service_all_resolved.set()
         
         def db_update_bg_thread():
-            print('Entering db_update_bg_thread()')
+            #print('Entering db_update_bg_thread()')
             self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type, event_callback=new_event_callback)
-            print('Terminating db_update_bg_thread()')
+            #print('Terminating db_update_bg_thread()')
             
-        print('Starting parser thread')
+        #print('Starting parser thread')
         self._avahi_browse_thread = threading.Thread(target = db_update_bg_thread)
         self._avahi_browse_thread.setDaemon(True)    # Subprocess parser should be forced to terminate when main program exits
         self._avahi_browse_thread.start()
-        print('Parser thread started... now waiting for event')
+        #print('Parser thread started... now waiting for event')
         
         _subthread_env.searched_service_found.wait(timeout) # Wait for the service to be published
-        print('Parser thread has found the searched service... now waiting for end of resolve')
+        #print('Parser thread has found the searched service... now waiting for end of resolve')
         _subthread_env.searched_service_all_resolved.wait(10)  # Give an extra 10s for the services to be resolved
+        #print('End of resolve notified. Terminating child process')
         
         p.terminate()   # Terminate the avahi-browse command, in order to stop updates to the database... this will also make thread db_update_bg_thread terminate
         
