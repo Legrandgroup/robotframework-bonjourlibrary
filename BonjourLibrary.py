@@ -41,10 +41,11 @@ def arping(ip_address, interface=None, use_sudo = True):
     
     global arping_supports_r_i
     
-    if re.match(r'\d+\.\d+\.\d+\.\d+', ip_address): # We have something that looks like an IPv4 address
+    if re.match(r'\d+\.\d+\.\d+\.\d+', str(ip_address)): # We have something that looks like an IPv4 address
         pass
     else:
-        raise Exception('BadIPv4Format:' + str(ip_address))
+        logger.error('Arping: bad IPv4 format: ' + str(ip_address))
+        raise Exception('BadIPv4Format')
     
     if use_sudo:
         arping_cmd_prefix = ['sudo']
@@ -108,6 +109,7 @@ def arping(ip_address, interface=None, use_sudo = True):
         if exitvalue == 0:
             return result
         else:
+            arping_supports_r_i = True  # If we fail here, maybe a previous failure (that lead us to this arping does not support -r -i) was wrong... just reset our global arping guess
             raise Exception('ArpingSubprocessFailed')
 
 def mac_normalise(mac, unix_format=True):
@@ -383,14 +385,25 @@ value:%s
         """
 
         (interface_osname, protocol, name, stype, domain) = key
+        logger.debug('Adding service ' + str(key) + ' with details ' + str(bonjour_service))
         if self.resolve_mac and not bonjour_service is None:
-            mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=self.use_sudo_for_arping)
-            if len(mac_address_list) == 0:
-                bonjour_service.mac_address = None
+            bonjour_service.mac_address = None
+            if protocol == 'ipv4':
+                try:
+                    mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=self.use_sudo_for_arping)
+                    if len(mac_address_list) != 0:
+                        if len(mac_address_list) > 1:  # More than one MAC address... issue a warning
+                            logger.warning('Got more than one MAC address for IP address ' + str(bonjour_service.ip_address) + ': ' + str(mac_address_list) + '. Using first')
+                        bonjour_service.mac_address = mac_address_list[0]
+                except Exception as e:
+                    if e.message != 'ArpingSubprocessFailed':   # If we got an exception related to anything else than arping subprocess...
+                        raise   # Raise the exception
+                    else:
+                        logger.warning('Arping failed for IP address ' + str(bonjour_service.ip_address) + '. Continuing anyway but MAC address will remain set to None')
+                        # Otherwise, we will just not resolve the IP address into a MAC... too bad, but maybe not that blocking
+                        # Note: this always happens when avahi-browse was launched without -l (in that cas, it might report local services, but the local IP address will not be resolved by arping as there is noone (else than us) to reply on the network interface 
             else:
-                if len(mac_address_list) > 1:  # More than one MAC address... issue a warning
-                    logger.warning('Got more than one MAC address for IP address ' + str(bonjour_service.ip_address) + ': ' + str(mac_address_list) + '. Using first')
-                bonjour_service.mac_address = mac_address_list[0]
+                logger.warning('Cannot resolve IPv6 ' + bonjour_service.ip_address + ' to MAC address (function not implemented yet)')
                 
         self._database[key] = bonjour_service
 
@@ -418,6 +431,7 @@ value:%s
             self.add(key, None)
         elif avahi_event.event == 'update':
             bonjour_service = BonjourService(avahi_event.hostname, avahi_event.ip_addr, avahi_event.sport, avahi_event.txt, 0, mac_address = None)
+            logger.debug('Will process update event on service ' + str(bonjour_service))
             self.add(key, bonjour_service)
         else:
             raise Exception('UnknownEvent')
@@ -545,10 +559,8 @@ value:%s
         logger.debug('Searching for service "' + searched_name + '" to get its device IP type: ' + ip_type)
         for key in self._database.keys():
             protocol = key[1]
-            print('Got protocol ' + protocol)
             if ip_type == 'all' or protocol == ip_type:
                 service_name_product = key[2]
-                print('And got service name ' + service_name_product)
                 if searched_name == service_name_product:
                     ip_address = self._database[key].ip_address
                     if match is None:
@@ -566,12 +578,13 @@ class BonjourLibrary:
 
     def __init__(self, domain='local', avahi_browse_exec_path=None, use_sudo_for_arping=True):
         self._domain = domain
-        self.service_database = None
+        self._service_database = None
+        self._service_database_mutex = threading.Lock()    # This mutex protects writes to the _service_database attribute
         self._avahi_browse_exec_path = avahi_browse_exec_path
         self._use_sudo_for_arping = use_sudo_for_arping
 
     def _parse_avahi_browse_output(self, avahi_browse_process, interface_name_filter = None, ip_type_filter = None, event_callback = None):
-        """Parse the output of an existing avahi-browse command (run with -p option) and update self.service_database accordingly until the subprocess terminates
+        """Parse the output of an existing avahi-browse command (run with -p option) and update self._service_database accordingly until the subprocess terminates
         \param avahi_browse_process A subprocess.Popen object for which we will process the output
         \param interface_name_filter If not None, we will only process services on this interface name
         \param ip_type_filter If not None, we will only process services with this IP type
@@ -584,7 +597,7 @@ class BonjourLibrary:
         line = avahi_browse_process.stdout.readline()
         while line:
             line = line.rstrip('\n')
-            #print('avahi-browse:"' + line + '"')
+            print('avahi-browse:"' + line + '"')
             if previous_line_continued:
                 avahi_event.add_line(line)
             else:
@@ -594,7 +607,8 @@ class BonjourLibrary:
                 #~ print('Getting event ' + str(avahi_event))
                 if interface_name_filter is None or avahi_event.interface == interface_name_filter:   # Only take into account services on the requested interface (if an interface was provided)
                     if ip_type_filter is None or avahi_event.ip_type == ip_type_filter:   # Only take into account services running on the requested IP stack (if an IP version was provided)
-                        self.service_database.processEvent(avahi_event)
+                        with self._service_database_mutex:
+                            self._service_database.processEvent(avahi_event)
                         if not event_callback is None and hasattr(event_callback, '__call__'):
                             event_callback(avahi_event) # If there is a callback to trigger when an event is processed, also run the callback
             line = avahi_browse_process.stdout.readline()
@@ -618,7 +632,8 @@ class BonjourLibrary:
         | @{result_list} = | Get Services | _http._tcp | eth1 | ipv6 |
         """
         
-        self.service_database = BonjourServiceDatabase(resolve_mac = resolve_ip, use_sudo_for_arping = self._use_sudo_for_arping)
+        with self._service_database_mutex:
+            self._service_database = BonjourServiceDatabase(resolve_mac = resolve_ip, use_sudo_for_arping = self._use_sudo_for_arping)
         
         if service_type and service_type != '*':
             service_type_arg = service_type
@@ -628,8 +643,9 @@ class BonjourLibrary:
         p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
         self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type)
         
-        logger.debug('Services found: ' + str(self.service_database))
-        return self.service_database.export_to_tuple_list()
+        with self._service_database_mutex:
+            logger.debug('Services found: ' + str(self._service_database))
+            return self._service_database.export_to_tuple_list()
     
     def wait_for_service_name(self, service_name, timeout = None, service_type = '_http._tcp', interface_name = None, ip_type = None,  resolve_ip = True):
         """Wait for a service named \p service_name to be published by a device
@@ -652,8 +668,8 @@ class BonjourLibrary:
         | @{result_list} = | Get Services | _http._tcp | eth1 | ipv6 |
         """
 
-        #Lionel: FIXME: use arping as selected by caller self.service_database = BonjourServiceDatabase(resolve_mac = resolve_ip, use_sudo_for_arping = self._use_sudo_for_arping)
-        self.service_database = BonjourServiceDatabase(resolve_mac = False, use_sudo_for_arping = self._use_sudo_for_arping)
+        with self._service_database_mutex:
+            self._service_database = BonjourServiceDatabase(resolve_mac = resolve_ip, use_sudo_for_arping = self._use_sudo_for_arping)
         
         if service_type and service_type != '*':
             service_type_arg = service_type
@@ -667,7 +683,7 @@ class BonjourLibrary:
             def __init__(self, expected_service_name):
                 self.nb_services_match_seen = 0 # How many services were discovered (matching the searched pattern)?
                 self.nb_services_match_resolved = 0 # How many services were resolved (matching the searched pattern)?
-                self. searched_service_found = threading.Event()  # Have we discovered at least one service matching the searched pattern?
+                self.searched_service_found = threading.Event()  # Have we discovered at least one service matching the searched pattern?
                 self.searched_service_all_resolved = threading.Event() # Have we resolved all discovered services matching the searched pattern?
                 self.expected_service_name = expected_service_name
         
@@ -680,31 +696,31 @@ class BonjourLibrary:
             if event.sname == _subthread_env.expected_service_name:
                 # Got an event for the service we are watching... check it exists or is added (not deleted)
                 if event.event == 'add': # The service is currently on, this is what we expected
+                    print(event.event + ' received on expected service instance #' + str(_subthread_env.nb_services_match_seen))
                     _subthread_env.nb_services_match_seen += 1
-                    #print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
                     _subthread_env.searched_service_found.set()
                 if event.event == 'update':
                     _subthread_env.searched_service_all_resolved.set()
-                    #print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
+                    print(event.event + ' received on expected service instance #' + str(_subthread_env.nb_services_match_resolved))
                     _subthread_env.nb_services_match_resolved += 1
                     if (_subthread_env.nb_services_match_resolved >= _subthread_env.nb_services_match_seen):
                         logger.debug('All discovered services have been resolved... done')
                         _subthread_env.searched_service_all_resolved.set()
         
         def db_update_bg_thread():
-            #print('Entering db_update_bg_thread()')
+            print('Entering db_update_bg_thread()')
             self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type, event_callback=new_event_callback)
-            #print('Terminating db_update_bg_thread()')
+            print('Terminating db_update_bg_thread()')
             
-        #print('Starting parser thread')
+        print('Starting parser thread')
         self._avahi_browse_thread = threading.Thread(target = db_update_bg_thread)
         self._avahi_browse_thread.setDaemon(True)    # Subprocess parser should be forced to terminate when main program exits
         self._avahi_browse_thread.start()
-        #print('Parser thread started... now waiting for event')
+        print('Parser thread started... now waiting for event')
         
         _subthread_env.searched_service_found.wait(timeout) # Wait for the service to be published
-        #print('Parser thread has found the searched service... now waiting for end of resolve')
-        _subthread_env.searched_service_all_resolved.wait(5)  # Give an extra 5s for the services to be resolved
+        print('Parser thread has found the searched service... now waiting for end of resolve')
+        _subthread_env.searched_service_all_resolved.wait(10)  # Give an extra 10s for the services to be resolved
         
         p.terminate()   # Terminate the avahi-browse command, in order to stop updates to the database... this will also make thread db_update_bg_thread terminate
         
@@ -717,10 +733,11 @@ class BonjourLibrary:
 
         p.wait()    # Wait until the avahi-browse command finishes
         
-        self.service_database.keep_only_service_name(str(service_name))
+        with self._service_database_mutex:
+            self._service_database.keep_only_service_name(str(service_name))
         
-        logger.debug('Services found: ' + str(self.service_database))
-        return self.service_database.export_to_tuple_list()
+            logger.debug('Services found: ' + str(self._service_database))
+            return self._service_database.export_to_tuple_list()
     
     def expect_service_on_ip(self, ip_address):
         """Test if a service has been listed on device with IP address `ip_address`
@@ -732,8 +749,9 @@ class BonjourLibrary:
         | Expect Service On IP | 192.168.0.1 |
         """
 
-        if not self.service_database.is_ip_address_in_db(ip_address):
-            raise Exception('ServiceNotFoundOn:' + str(ip_address))
+        with self._service_database_mutex:
+            if not self._service_database.is_ip_address_in_db(ip_address):
+                raise Exception('ServiceNotFoundOn:' + str(ip_address))
 
     def expect_no_service_on_ip(self, ip_address):
         """Test if a service is absent from device with IP address `ip_address`
@@ -745,8 +763,9 @@ class BonjourLibrary:
         | Expect No Service On IP | 192.168.0.1 |
         """
 
-        if self.service_database.is_ip_address_in_db(ip_address):
-            raise Exception('ServiceExistsOn:' + str(ip_address))
+        with self._service_database_mutex:
+            if self._service_database.is_ip_address_in_db(ip_address):
+                raise Exception('ServiceExistsOn:' + str(ip_address))
     
     def get_ipv4_for_mac(self, mac):
         """Returns the IPv4 address matching MAC address from the list a Bonjour devices in the database
@@ -762,7 +781,8 @@ class BonjourLibrary:
         | 169.254.47.26 |
         """
 
-        return self.service_database.get_ip_address_from_mac_address(mac, ip_type='ipv4')
+        with self._service_database_mutex:
+            return self._service_database.get_ip_address_from_mac_address(mac, ip_type='ipv4')
 
     def get_ipv6_for_mac(self, mac):
         """Returns the IPv6 address matching MAC address mac from the list a Bonjour devices in the database
@@ -778,7 +798,8 @@ class BonjourLibrary:
         | fe80::204:74ff:fe12:1 |
         """
 
-        return self.service_database.get_ip_address_from_mac_address(mac, ip_type='ipv6')
+        with self._service_database_mutex:
+            return self._service_database.get_ip_address_from_mac_address(mac, ip_type='ipv6')
 
     def get_ipv4_for_service_name(self, service_name):
         """Get the IPv4 address for the device publishing the service `service_name`.
@@ -795,7 +816,8 @@ class BonjourLibrary:
         | 169.254.4.74 |
         """
 
-        return self.service_database.get_ip_address_from_name(service_name, ip_type='ipv4')
+        with self._service_database_mutex:
+            return self._service_database.get_ip_address_from_name(service_name, ip_type='ipv4')
 
     def get_ipv6_for_service_name(self, service_name):
         """Get the IPv6 address for the device publishing the service `service_name`.
@@ -811,7 +833,8 @@ class BonjourLibrary:
         | fe80::1 |
         """
 
-        return self.service_database.get_ip_address_from_name(service_name, ip_type='ipv6')
+        with self._service_database_mutex:
+            return self._service_database.get_ip_address_from_name(service_name, ip_type='ipv6')
     
     def import_results(self, result_list):
         """Import a service result list (previously returned by `Get Services` in order to work again/filter/extract from that list
@@ -822,9 +845,10 @@ class BonjourLibrary:
         | Import Results | @{result_list} |
         """
         
-        self.service_database.reset()
-        for service in result_list:
-            self.service_database.import_from_tuple(service)
+        with self._service_database_mutex:
+            self._service_database.reset()
+            for service in result_list:
+                self._service_database.import_from_tuple(service)
         
 if __name__ == '__main__':
     try:
