@@ -438,6 +438,7 @@ value:%s
                 flags = bonjour_service.flags
                 mac_address = bonjour_service.mac_address
             else:
+                logger.warning('Exporting a non resolved entry for service "' + str(name) + '" of type ' + str(stype))
                 hostname = None
                 ip_address = None
                 port = None
@@ -559,7 +560,7 @@ class BonjourLibrary:
         """
         previous_line_continued = False
         avahi_event = None
-        print('Going to parse output of process PID ' + str(avahi_browse_process.pid))
+        #print('Going to parse output of process PID ' + str(avahi_browse_process.pid))
         # We cannot use stdout iterator as usual here, because it adds some buffering on the subprocess stdout that will not provide us the output lines in real-time
         line = avahi_browse_process.stdout.readline()
         while line:
