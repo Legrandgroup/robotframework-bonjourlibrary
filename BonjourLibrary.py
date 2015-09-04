@@ -179,37 +179,43 @@ class AvahiBrowseServiceEvent:
         if entry_array is None:
             raise Exception('InvalidEntry')
         type = entry_array[0]
-        if type == '+' or type == '=':
-            self._input = entry_array
-            if ((type == '+' and len(entry_array) != 6) or (type == '=' and len(entry_array) != 10)):
-                raise Exception('InvalidEntry')
-            self.interface = entry_array[1]
-            if entry_array[2] == 'IPv4':
-                self.ip_type = 'ipv4'
-            elif entry_array[2] == 'IPv6':
-                self.ip_type = 'ipv6'
-            else:
-                raise Exception('InvalidIPType:' + entry_array[2])
-            
-            self.sname = AvahiBrowseServiceEvent.unescape_avahibrowse_string(entry_array[3])
-            #self.sname = unicode(self.sname, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
-            self.stype = AvahiBrowseServiceEvent.convert_to_raw_service_type(entry_array[4])
-            self.domain = entry_array[5]
-            if type == '=':	# '=' means resolved service so we get a bit more details on those lines
-                self.hostname = entry_array[6]
-                self.ip_addr = entry_array[7]
-                self.sport = int(entry_array[8])
-                self.txt = entry_array[9]
-                #~ self.txt = unicode(self.txt, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
-                self.txt_missing_end = not AvahiBrowseServiceEvent.isClosedString(self.txt)
-                self.event = 'update'
-            else:
-                self.hostname = None
-                self.ip_addr = None
-                self.sport = None
-                self.txt = None
-                self.txt_missing_end = False
-                self.event = 'add'
+        self._input = entry_array
+        if (((type == '+' or type == '-') and len(entry_array) != 6) or (type == '=' and len(entry_array) != 10)):
+            raise Exception('InvalidEntry')
+        self.interface = entry_array[1]
+        if entry_array[2] == 'IPv4':
+            self.ip_type = 'ipv4'
+        elif entry_array[2] == 'IPv6':
+            self.ip_type = 'ipv6'
+        else:
+            raise Exception('InvalidIPType:' + entry_array[2])
+        
+        self.sname = AvahiBrowseServiceEvent.unescape_avahibrowse_string(entry_array[3])
+        #self.sname = unicode(self.sname, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
+        self.stype = AvahiBrowseServiceEvent.convert_to_raw_service_type(entry_array[4])
+        self.domain = entry_array[5]
+        if type == '=':	# '=' means resolved service so we get a bit more details on those lines
+            self.hostname = entry_array[6]
+            self.ip_addr = entry_array[7]
+            self.sport = int(entry_array[8])
+            self.txt = entry_array[9]
+            #~ self.txt = unicode(self.txt, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
+            self.txt_missing_end = not AvahiBrowseServiceEvent.isClosedString(self.txt)
+            self.event = 'update'
+        elif type == '+':   # '+' means add so there is no service resolution available yet
+            self.hostname = None
+            self.ip_addr = None
+            self.sport = None
+            self.txt = None
+            self.txt_missing_end = False
+            self.event = 'add'
+        elif type == '-':   # '-' means service withdrawal
+            self.hostname = None
+            self.ip_addr = None
+            self.sport = None
+            self.txt = None
+            self.txt_missing_end = False
+            self.event = 'del'
         else:
             raise Exception('UnknownType:' + type)
     
@@ -420,6 +426,7 @@ value:%s
         \param key A tuple containing (interface, protocol, name, stype, domain), which is the key of the record to delete from the database 
         """
 
+        logger.debug('Removing entry ' + str(key) + ' from database')
         if key in self._database.keys():
             del self._database[key]
 
@@ -440,6 +447,9 @@ value:%s
             bonjour_service = BonjourService(avahi_event.hostname, avahi_event.ip_addr, avahi_event.sport, avahi_event.txt, 0, mac_address = None)
             #logger.debug('Will process update event on service ' + str(bonjour_service))
             self.add(key, bonjour_service)
+        elif avahi_event.event == 'del':
+            # With del events, we don'never get any additional information about the service (it is not resolved)
+            self.remove(key)
         else:
             raise Exception('UnknownEvent')
         
@@ -660,7 +670,7 @@ class BonjourLibrary:
             logger.debug('Services found: ' + str(self._service_database))
             return self._service_database.export_to_tuple_list()
     
-    def wait_for_service_name(self, service_name, timeout = None, service_type = '_http._tcp', interface_name = None, ip_type = None,  resolve_ip = True):
+    def wait_for_service_name(self, service_name, timeout = None, service_type = '_http._tcp', interface_name = None, ip_type = None, resolve_ip = True):
         """Wait for a service named \p service_name to be published by a device
         
         First argument `service_name` is the name of the service expected
@@ -689,9 +699,6 @@ class BonjourLibrary:
         else:
             service_type_arg = '-a'
 
-        #print('Running command ' + str(['avahi-browse', '-p', '-r', '-l,' service_type_arg]))
-        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
-        
         class SubThreadEnv():
             """\brief Class used to store db_update_bg_thread() environment variables
             
@@ -703,6 +710,9 @@ class BonjourLibrary:
                 self.searched_service_found = threading.Event()  # Have we discovered at least one service matching the searched pattern?
                 self.searched_service_all_resolved = threading.Event() # Have we resolved all discovered services matching the searched pattern?
                 self.expected_service_name = expected_service_name
+        
+        #print('Running command ' + str(['avahi-browse', '-p', '-r', '-l,' service_type_arg]))
+        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
         
         _subthread_env = SubThreadEnv(expected_service_name = service_name)
         
@@ -762,6 +772,104 @@ class BonjourLibrary:
         
             logger.debug('Services found: ' + str(self._service_database))
             return self._service_database.export_to_tuple_list()
+    
+    def wait_for_no_service_name(self, service_name, timeout = None, service_type = '_http._tcp', interface_name = None, ip_type = None):
+        """Wait for a service named \p service_name to be published by a device
+        
+        First argument `service_name` is the name of the service expected
+        Second (optional) argument `timeout` is the timeout for this service to be published (if None, we will wait forever)
+        Third (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
+        Forth (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
+        Fifth (optional) argument `ip_type` is the type of IP protocol to filter our (eg: `ipv6`, or `ipv4`, the default values being any IP version)
+        
+        Example:
+        | Wait For No Service Name | Test |
+        
+        | Wait For No Service Name | 20 | _http._tcp |
+        
+        | Wait For No Service Name | 20 | _http._tcp | eth1 | ipv6 |
+        """
+
+        with self._service_database_mutex:
+            self._service_database = BonjourServiceDatabase(resolve_mac = False, use_sudo_for_arping = self._use_sudo_for_arping)
+        
+        if service_type and service_type != '*':
+            service_type_arg = service_type
+        else:
+            service_type_arg = '-a'
+
+        class SubThreadEnv():
+            """\brief Class used to store db_update_bg_thread() environment variables
+            
+            \param expected_service_name The service name that, once withdrawn, will make the thread declare it has done its job
+            """
+            def __init__(self, expected_service_name):
+                self.current_nb_services_match = 0 # How many services were discovered (matching the searched pattern)?
+                self.all_searched_service_withdrawn = threading.Event()  # Have we discovered at least one service matching the searched pattern?
+                self.expected_service_name = expected_service_name
+
+        def new_event_callback(event):
+            """\brief Function callback triggered when a new event is read from subprocess avahi-browse. It will check if the event matches the service we are waiting for and set all_searched_service_removed if so
+            
+            This function is provided as the event_callback argument of  _parse_avahi_browse_output() below
+            
+            \param event Each AvahiBrowseServiceEvent that is being processed in the database
+            """
+            #print('Getting new event ' + event.event + ' for service name ' + str(event.sname))
+            if event.sname == _subthread_env.expected_service_name:
+                # Got an event for the service we are watching... check it exists or is added (not deleted)
+                if event.event == 'add': # The service is currently on, this is what we expected
+                    _subthread_env.current_nb_services_match += 1
+                    #print(event.event + ' received. Count on expected service is now ' + str(_subthread_env.current_nb_services_match))
+                if event.event == 'del':
+                    _subthread_env.current_nb_services_match -= 1
+                    #print(event.event + ' received. Count on expected service is now ' + str(_subthread_env.current_nb_services_match))
+                    #print('Comparing ' + str(_subthread_env.nb_services_match_resolved) + ' >= ' + str(_subthread_env.nb_services_match_seen))
+                    if (_subthread_env.current_nb_services_match == 0): # There is no service anymore... assume it's OK
+                        logger.debug('All searched services have been withdrawn... done')
+                        _subthread_env.all_searched_service_withdrawn.set()
+        
+        # Perform a first pass to check if there is one service matching what is expected
+        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
+        
+        _subthread_env = SubThreadEnv(expected_service_name = service_name)
+
+        self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type, event_callback=new_event_callback)
+        
+        if _subthread_env.current_nb_services_match == 0: # There are no services matching directly at the beginning of the check... succeed immediately
+            return
+        
+        # Now perform a second pass but keeping getting updated of changes (removing -t option)
+        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
+        
+        _subthread_env = SubThreadEnv(expected_service_name = service_name) # We start again from scratch (we will to discover a second time the related services, so reset to not count them twice)
+        
+        def db_update_bg_thread():
+            """\brief Run _parse_avahi_browse_output() (aimed to be run in a secondary thread)
+            """
+            #print('Entering db_update_bg_thread()')
+            self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type, event_callback=new_event_callback)
+            #print('Terminating db_update_bg_thread()')
+            
+        #print('Starting parser thread')
+        self._avahi_browse_thread = threading.Thread(target = db_update_bg_thread)
+        self._avahi_browse_thread.setDaemon(True)    # Subprocess parser should be forced to terminate when main program exits
+        self._avahi_browse_thread.start()
+        #print('Parser thread started... now waiting for event')
+        
+        _subthread_env.all_searched_service_withdrawn.wait(timeout) # Wait for the service to be withdrawn
+        #print('End of resolve notified. Terminating child process')
+        
+        p.terminate()   # Terminate the avahi-browse command, in order to stop updates to the database... this will also make thread db_update_bg_thread terminate
+        
+        if (not _subthread_env.all_searched_service_withdrawn.is_set()):
+            msg = 'Expected service was not withdrawn'
+            if not timeout is None:
+                msg += ' after waiting ' + str(timeout) + 's'
+            logger.warning(msg)
+            raise Exception('ServiceFound:' + str(service_name))
+
+        p.wait()    # Wait until the avahi-browse command finishes
     
     def expect_service_on_ip(self, ip_address):
         """Test if a service has been listed on device with IP address `ip_address`
@@ -906,7 +1014,7 @@ if __name__ == '__main__':
     #print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
     AVAHI_BROWSER = 'avahi-browse'
     BL = BonjourLibrary('local', AVAHI_BROWSER)
-    input('Press enter & "Enable UPnP/Bonjour" on web interface')
+    input('Press enter & "Enable Bonjour" on device')
     temp_cache = BL.get_services(service_type='_http._tcp', interface_name='eth1')
     if IP != BL.get_ipv4_for_service_name(exp_service):
         raise Exception('Error')
@@ -921,7 +1029,8 @@ if __name__ == '__main__':
     BL.expect_service_on_ip(IP)  # We should get again the service that we found above
     input('Press enter & publish a service called "' + exp_service + '" within 10s')
     BL.wait_for_service_name(exp_service, timeout=10, service_type = '_http._tcp', interface_name='eth1')
-    input('Press enter & "Disable UPnP/Bonjour" on web interface')
+    input('Press enter & either Disable Bonjour on device or stop publishing service called "' + exp_service + '" within 20s')
+    BL.wait_for_no_service_name(exp_service, timeout=20, service_type = '_http._tcp', interface_name='eth1')
     BL.get_services(service_type='_http._tcp', interface_name='eth1')
     BL.expect_no_service_on_ip(IP)
 else:
