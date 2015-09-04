@@ -909,6 +909,8 @@ class BonjourLibrary:
         Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
         To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
         
+        Note: running this keyword will have the effect of changing the current database results from `Get Services` (used by other keywords)
+        
         Example:
         | Get Services | _http._tcp | eth1 | ipv4 |
         | @{result_list} = | Get Service On IP | 192.168.0.1 |
@@ -923,6 +925,8 @@ class BonjourLibrary:
         
         Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
         To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
+        
+        Note: running this keyword will have the effect of changing the current database results from `Get Services` (used by other keywords)
         
         Example:
         | Get Services | _http._tcp | eth1 | ipv4 |

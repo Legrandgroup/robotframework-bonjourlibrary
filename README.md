@@ -106,6 +106,18 @@ If the service does not exist when running this keyword, it will immediately ret
 
 After running this keyword, the internal database will be updated with the services remaining (filtered according to arguments (IPv4/IPv6, type etc...)
 
+#### `Get All Services For IP`
+  
+*Filters results obtained by `Get Services` only returning entries for a specific IP address*
+
+Note: this will have the side effect of changing the current database results from `Get Services` (used by other keywords)
+
+#### `Get All Services For MAC`
+  
+*Filters results obtained by `Get Services` only returning entries for a specific MAC address... will obviously have MAC resolution on results*
+
+Note: this will have the side effect of changing the current database results from `Get Services` (used by other keywords)
+
 #### `Get IPv4 For MAC`
 
 *Returns the IPv4 address of a Bonjour device matching MAC address*
@@ -184,10 +196,3 @@ This lists keywords that might be implemented in the future if required:
   
   *Get the whole service details (tuple) based on a service type (and optionally a port (recommended) and optionnally a host specified by either its MAC address of IP address)*
 
-* `Get All Services For IP`
-  
-  *Filtering version of `Get Services` only returning entries for a specific IP address*
-
-* `Get All Services For MAC`
-  
-  *Filtering version of `Get Services` only returning entries for a specific MAC address... will obviously have MAC resolution on results*
