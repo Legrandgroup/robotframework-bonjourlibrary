@@ -463,7 +463,39 @@ value:%s
             if name != service_name:
                 logger.debug('Removing non-required service named "' + name + "' from database")
                 del self._database[key]
+
+    def keep_only_ip_address(self, ip_address):
+        """\brief Filter the current database to remove all entries that do not match the specified \p ip_address
         
+        \param ip_address The IP address of entries to keep
+        """
+        try:
+            records = self._database.iteritems()
+        except AttributeError:
+            records = self._database.items()
+        
+        for (key, bonjour_service) in records:
+            if not bonjour_service is None:
+                if bonjour_service.ip_address == ip_address:
+                    logger.debug('Removing non-required IP address "' + ip_address + "' from database")
+                    del self._database[key]
+
+    def keep_only_mac_address(self, mac_address):
+        """\brief Filter the current database to remove all entries that do not match the specified \p mac_address
+        
+        \param mac_address The MAC address of entries to keep
+        """
+        try:
+            records = self._database.iteritems()
+        except AttributeError:
+            records = self._database.items()
+        
+        for (key, bonjour_service) in records:
+            if not bonjour_service is None:
+                if mac_normalise(bonjour_service.mac_address) == mac_normalise(mac_address):
+                    logger.debug('Removing non-required MAC address "' + mac_address + "' from database")
+                    del self._database[key]
+    
     def export_to_tuple_list(self):
         """\brief Export this database to a list of tuples (so that it can be processed by RobotFramework keywords)
         
@@ -871,6 +903,36 @@ class BonjourLibrary:
 
         p.wait()    # Wait until the avahi-browse command finishes
     
+    def get_service_on_ip(self, ip_address):
+        """Reduce the current server database for only services matching with the provided IP address
+        
+        Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
+        To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
+        
+        Example:
+        | Get Services | _http._tcp | eth1 | ipv4 |
+        | @{result_list} = | Get Service On IP | 192.168.0.1 |
+        """
+
+        with self._service_database_mutex:
+            self._service_database.keep_only_ip_address(ip_address)
+            return self._service_database.export_to_tuple_list()
+            
+    def get_service_on_mac(self, mac_address):
+        """Reduce the current server database for only services matching with the provided MAC address
+        
+        Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
+        To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
+        
+        Example:
+        | Get Services | _http._tcp | eth1 | ipv4 |
+        | @{result_list} = | Get Service On MAC | 00:04:74:02:26:47 |
+        """
+
+        with self._service_database_mutex:
+            self._service_database.keep_only_mac_address(mac_address)
+            return self._service_database.export_to_tuple_list()
+
     def expect_service_on_ip(self, ip_address):
         """Test if a service has been listed on device with IP address `ip_address`
         
