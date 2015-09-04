@@ -417,6 +417,17 @@ value:%s
         else:
             raise Exception('UnknownEvent')
         
+    def keep_only_service_name(self, service_name):
+        """\brief Filter the current database to remove all entries that do not match the specified \p service_name
+        
+        \param service_name The service name of entries to keep
+        """
+        for key in self._database.keys():
+            name = key[2]
+            if name != service_name:
+                print('Removing service named ' + name)
+                del self._database[key]
+        
     def export_to_tuple_list(self):
         """\brief Export this database to a list of tuples (so that it can be processed by RobotFramework keywords)
         
@@ -612,10 +623,10 @@ class BonjourLibrary:
         logger.debug('Services found: ' + str(self.service_database))
         return self.service_database.export_to_tuple_list()
     
-    def wait_for_service_name(self, expected_service_name, timeout = None, service_type = '_http._tcp', interface_name = None, ip_type = None,  resolve_ip = True):
+    def wait_for_service_name(self, service_name, timeout = None, service_type = '_http._tcp', interface_name = None, ip_type = None,  resolve_ip = True):
         """Wait for a service named \p service_name to be published by a device
         
-        First argument `expected_service_name` is the name of the service expected
+        First argument `service_name` is the name of the service expected
         Second (optional) argument `timeout` is the timeout for this service to be published (if None, we will wait forever)
         Third (optional) argument `service_type` is the type of service (in the Bonjour terminology, the default value being `_http._tcp`)
         Forth (optional) argument `interface_name` is the name of the network interface on which to browse for Bonjour devices (if not specified, search will be performed on all valid network interfaces)
@@ -645,19 +656,20 @@ class BonjourLibrary:
         p = subprocess.Popen(['avahi-browse', '-p', '-r', '-t',  service_type_arg], stdout=subprocess.PIPE)
         
         class SubThreadEnv():
-            def __init__(self):
+            def __init__(self, expected_service_name):
                 self.nb_services_match_seen = 0 # How many services were discovered (matching the searched pattern)?
                 self.nb_services_match_resolved = 0 # How many services were resolved (matching the searched pattern)?
                 self. searched_service_found = threading.Event()  # Have we discovered at least one service matching the searched pattern?
-                searched_service_all_resolved = threading.Event() # Have we resolved all discovered services matching the searched pattern?
+                self.searched_service_all_resolved = threading.Event() # Have we resolved all discovered services matching the searched pattern?
+                self.expected_service_name = expected_service_name
         
-        _subthread_env = SubThreadEnv()
+        _subthread_env = SubThreadEnv(expected_service_name = service_name)
         
         def new_event_callback(event):
             """Function callback triggered when a new event is read from subprocess avahi-browse. It will check if the event matches the service we are waiting for and set searched_service_found if so
             """
             print('Getting new event for service name ' + str(event.sname))
-            if event.sname == expected_service_name:
+            if event.sname == _subthread_env.expected_service_name:
                 # Got an event for the service we are watching... check it exists or is added (not deleted)
                 if event.event == 'add': # The service is currently on, this is what we expected
                     _subthread_env.nb_services_match_seen += 1
@@ -667,9 +679,9 @@ class BonjourLibrary:
                     _subthread_env.searched_service_all_resolved.set()
                     print(event.event + ' received on ' + str(_subthread_env.nb_services_match_seen) + 'th instance of expected service')
                     _subthread_env.nb_services_match_resolved += 1
-                    if (_subthread_env.nb_services_match_seen == _subthread_env.nb_services_match_resolved):
+                    if (_subthread_env.nb_services_match_resolved >= _subthread_env.nb_services_match_seen):
                         print('All discovered services have been resolved')
-                        _subthread_env.searched_service_found.set()
+                        _subthread_env.searched_service_all_resolved.set()
         
         def db_update_bg_thread():
             print('Entering db_update_bg_thread()')
@@ -682,7 +694,9 @@ class BonjourLibrary:
         self._avahi_browse_thread.start()
         print('Parser thread started... now waiting for event')
         
-        _subthread_env.searched_service_found.wait(timeout)
+        _subthread_env.searched_service_found.wait(timeout) # Wait for the service to be published
+        print('Parser thread foudn service... now waiting for end of resolve')
+        _subthread_env.searched_service_all_resolved.wait(5)  # Give an extra 5s for the services to be resolved
         
         p.terminate()   # Terminate the avahi-browse command, in order to stop updates to the database... this will also make thread db_update_bg_thread terminate
         
@@ -691,9 +705,11 @@ class BonjourLibrary:
             if not timeout is None:
                 msg += ' after waiting ' + str(timeout) + 's'
             logger.warning(msg)
-            raise Exception('ServiceNotFound:' + str(expected_service_name))
+            raise Exception('ServiceNotFound:' + str(service_name))
 
         p.wait()    # Wait until the avahi-browse command finishes
+        
+        self.service_database.keep_only_service_name(str(service_name))
         
         logger.debug('Services found: ' + str(self.service_database))
         return self.service_database.export_to_tuple_list()
