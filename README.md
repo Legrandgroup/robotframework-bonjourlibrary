@@ -192,7 +192,7 @@ This lists keywords that might be implemented in the future if required:
   
   *Get the whole service details (tuple) based on a service name (and optionally a a host specified by either its MAC address of IP address)*
 
-*  `Details For Service Type`
+* `Details For Service Type`
   
   *Get the whole service details (tuple) based on a service type (and optionally a port (recommended) and optionnally a host specified by either its MAC address of IP address)*
 
