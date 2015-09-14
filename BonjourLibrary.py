@@ -11,6 +11,30 @@ import subprocess
 
 import threading
 
+def guess_ip_version(ip_string):
+    """ Guess the version of an IP address, check its validity
+    \param ip_string A string containing an IP address
+    
+    \return The version of the IP protocol used (int(4) for IPv4 or int(6) for IPv6, int(0) otherwise) 
+    """
+    
+    import socket
+    
+    try:
+        ipv4_buffer = socket.inet_pton(socket.AF_INET, ip_string)
+        return 4
+    except socket.error:
+        pass
+    
+    if socket.has_ipv6:
+        try:
+            ipv4_buffer = socket.inet_pton(socket.AF_INET, ip_string)
+            return 6
+        except socket.error:
+            pass
+    
+    return 0
+
 # The pythonic-version of arping below (using python scapy) is commented out because it cannot gain superuser rights via sudo, we should thus be root
 # This would however be more platform-independent... instead, we run the arping command (via sudo) and parse its output
 # import scapy.all
