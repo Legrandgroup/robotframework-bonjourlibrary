@@ -56,7 +56,7 @@ arping_supports_r_i = True
 def arping(ip_address, interface=None, use_sudo = True):
     """Run arping and returns a list of MAC addresses matching with the IP address provided in \p ip_address (or an empty list if there was no reply)
     
-    \param ip_address The IP to probe
+    \param ip_address The IPv4 to probe
     \param interface A network interface on which to probe (or None if we should check all network interfaces)
     \param use_sudo Use sudo to run the arping command (set this to True if privilege elevation is required)
     
@@ -65,9 +65,7 @@ def arping(ip_address, interface=None, use_sudo = True):
     
     global arping_supports_r_i
     
-    if re.match(r'\d+\.\d+\.\d+\.\d+', str(ip_address)): # We have something that looks like an IPv4 address
-        pass
-    else:
+    if guess_ip_version(str(ip_address)) != 4: # We have an IPv4 address
         logger.error('Arping: bad IPv4 format: ' + str(ip_address))
         raise Exception('BadIPv4Format')
     
