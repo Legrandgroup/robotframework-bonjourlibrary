@@ -28,7 +28,7 @@ def guess_ip_version(ip_string):
     
     if socket.has_ipv6:
         try:
-            ipv4_buffer = socket.inet_pton(socket.AF_INET, ip_string)
+            ipv6_buffer = socket.inet_pton(socket.AF_INET, ip_string)
             return 6
         except socket.error:
             pass
@@ -557,7 +557,7 @@ value:%s
         """
         (interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address) = tuple
         key = (interface_osname, protocol, name, stype, domain)
-        bonjour_service = BonjourService(hostname, ip_address, port, txt, flags)
+        bonjour_service = BonjourService(hostname, ip_address, port, txt, flags, mac_address)
         self.add(key, bonjour_service)
 
     def is_ip_address_in_db(self, ip_address):
