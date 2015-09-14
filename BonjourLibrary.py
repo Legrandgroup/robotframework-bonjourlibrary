@@ -1055,12 +1055,12 @@ if __name__ == '__main__':
     except ImportError:
         import logging
 
-        logger = logging.getLogger('console_logger')
-        logger.setLevel(logging.DEBUG)
-        
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logger.addHandler(handler)
+    logger = logging.getLogger('console_logger')
+    logger.setLevel(logging.DEBUG)
+    
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
 
     try:
         input = raw_input
@@ -1101,4 +1101,3 @@ if __name__ == '__main__':
     BL.expect_no_service_on_ip(IP)
 else:
     from robot.api import logger
-
