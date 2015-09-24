@@ -652,12 +652,16 @@ class BonjourLibrary:
     ROBOT_LIBRARY_DOC_FORMAT = 'ROBOT'
     ROBOT_LIBRARY_SCOPE = 'GLOBAL'
     ROBOT_LIBRARY_VERSION = '1.0'
+    AVAHI_BROWSE_DEFAULT_EXEC = 'avahi-browse'
 
     def __init__(self, domain='local', avahi_browse_exec_path=None, use_sudo_for_arping=True):
         self._domain = domain
         self._service_database = None
         self._service_database_mutex = threading.Lock()    # This mutex protects writes to the _service_database attribute
-        self._avahi_browse_exec_path = avahi_browse_exec_path
+        if avahi_browse_exec_path is None:
+            self._avahi_browse_exec_path = BonjourLibrary.AVAHI_BROWSE_DEFAULT_EXEC
+        else:
+            self._avahi_browse_exec_path = avahi_browse_exec_path
         self._use_sudo_for_arping = use_sudo_for_arping
 
     def _parse_avahi_browse_output(self, avahi_browse_process, interface_name_filter = None, ip_type_filter = None, event_callback = None):
@@ -717,7 +721,7 @@ class BonjourLibrary:
         else:
             service_type_arg = '-a'
 
-        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
+        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
         self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type)
         
         with self._service_database_mutex:
@@ -765,8 +769,8 @@ class BonjourLibrary:
                 self.searched_service_all_resolved = threading.Event() # Have we resolved all discovered services matching the searched pattern?
                 self.expected_service_name = expected_service_name
         
-        #print('Running command ' + str(['avahi-browse', '-p', '-r', '-l,' service_type_arg]))
-        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
+        #print('Running command ' + str([self._avahi_browse_exec_path, '-p', '-r', '-l,' service_type_arg]))
+        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
         
         _subthread_env = SubThreadEnv(expected_service_name = service_name)
         
@@ -884,7 +888,7 @@ class BonjourLibrary:
                         _subthread_env.all_searched_service_withdrawn.set()
         
         # Perform a first pass to check if there is one service matching what is expected
-        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
+        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
         
         _subthread_env = SubThreadEnv(expected_service_name = service_name)
 
@@ -894,7 +898,7 @@ class BonjourLibrary:
             return
         
         # Now perform a second pass but keeping getting updated of changes (removing -t option)
-        p = subprocess.Popen(['avahi-browse', '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
+        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
         
         _subthread_env = SubThreadEnv(expected_service_name = service_name) # We start again from scratch (we will to discover a second time the related services, so reset to not count them twice)
         
@@ -1030,8 +1034,7 @@ class BonjourLibrary:
         If more than one service matches \p service_name, an exception will be raised
         
         Example:
-        | ${data} = | Get IPv4 For Service Name | Workstation000474 |
-        | Get APName | ${data} |
+        | ${ip} = | Get IPv4 For Service Name | Workstation000474 |
         =>
         | 169.254.4.74 |
         """
