@@ -61,19 +61,20 @@ Return a list of services found on the network
 Each entry of the list will contain a tuple describing a service. The tuple's 
 element are (in order).
 
-* interface: The network interface on which the service has been discovered
-  (following the OS notation, eg: 'eth0')
-* protocol: The type of IP protocol on which the service is published ('ipv4'
-  or 'ipv6')
-* name: The human-friendy name of the service as displayed by Bonjour browsing
-  utilities
-* stype: The service type following Bonjour's convention, eg '_http._tcp'
-* domain: The domain on which the service was discovered, eg 'local'
-* hostname: The hostname of the device publishing the service (eg: blabla.local)
-* ip_address The IP address of the device publishing the service (eg:
-  '192.168.0.1' or 'fe80::1')
-* port: The TCP or UDP port on which the service is running (eg: 80)
-* txt: The TXT field associated with the service
+1. `interface`: The network interface on which the service has been discovered
+   (following the OS notation, eg: 'eth0')
+2. `protocol`: The type of IP protocol on which the service is published ('ipv4'
+   or 'ipv6')
+3. `name`: The human-friendy name of the service as displayed by Bonjour
+   browsing utilities
+4. `stype`: The service type following Bonjour's convention, eg '_http._tcp'
+5. `domain`: The domain on which the service was discovered, eg 'local'
+6. `hostname`: The hostname of the device publishing the service (eg:
+   blabla.local)
+7. `ip_address`: The IP address of the device publishing the service (eg:
+   '192.168.0.1' or 'fe80::1')
+8. `port`: The TCP or UDP port on which the service is running (eg: 80)
+9. `txt`: The TXT field associated with the service
 
 #### `Expect Service On IP`
 
@@ -143,7 +144,7 @@ to be withdrawn or will block forever (not recommended)
 After running this keyword, the internal database will be updated with the 
 services remaining (filtered according to arguments (IPv4/IPv6, type etc...)
 
-#### `Get All Services For IP`
+#### `Get Service On IP`
   
 *Filters results obtained by `Get Services` only returning entries for a 
 specific IP address*
@@ -151,7 +152,7 @@ specific IP address*
 Note: this will have the side effect of changing the current database results 
 from `Get Services` (used by other keywords)
 
-#### `Get All Services For MAC`
+#### `Get Service On MAC`
   
 *Filters results obtained by `Get Services` only returning entries for a 
 specific MAC address... will obviously have MAC resolution on results*
