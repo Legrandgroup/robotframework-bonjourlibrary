@@ -952,6 +952,8 @@ class BonjourLibrary:
         Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
         To make sure you restrict to IPv4 or IPv6, filter IP types when running `Get Services`
         
+        In order to use this keyword, you will need to request IP to MAC address resolution (6th argument of Get Services)
+        
         Note: running this keyword will have the effect of changing the current database results from `Get Services` (used by other keywords)
         
         Example:
@@ -991,11 +993,43 @@ class BonjourLibrary:
             if self._service_database.is_ip_address_in_db(ip_address):
                 raise Exception('ServiceExistsOn:' + str(ip_address))
     
+    def expect_service_on_mac(self, mac_address):
+        """Test if a service has been listed on device with MAC address `mac_address`
+        
+        Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
+        
+        In order to use this keyword, you will need to request IP to MAC address resolution (6th argument of Get Services)
+        
+        Example:
+        | Expect Service On MAC | 00:04:74:05:38:38 |
+        """
+
+        with self._service_database_mutex:
+            if not self._service_database.is_mac_address_in_db(mac_address):
+                raise Exception('ServiceNotFoundOn:' + str(mac_address))
+
+    def expect_no_service_on_mac(self, mac_address):
+        """Test if a service is absent from device with MAC address `mac_address`
+        
+        Note: `Get Services` or `Import Results` must have been run prior to calling this keyword
+        
+        In order to use this keyword, you will need to request IP to MAC address resolution (6th argument of Get Services)
+        
+        Example:
+        | Expect No Service On MAC | 00:04:74:05:38:38 |
+        """
+
+        with self._service_database_mutex:
+            if self._service_database.is_mac_address_in_db(mac_address):
+                raise Exception('ServiceExistsOn:' + str(mac_address))
+    
     def get_ipv4_for_mac(self, mac):
         """Returns the IPv4 address matching MAC address from the list a Bonjour devices in the database
         
         Note: The search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
         If there is more than one IPv4 address matching with the MAC address, an exception will be raised (unlikely except if there is an IP address update in the middle of `Get Services`)
+        
+        In order to use this keyword, you will need to request IP to MAC address resolution (6th argument of Get Services)
         
         Return the IPv4 address or None if the MAC address was not found.
         
@@ -1013,6 +1047,8 @@ class BonjourLibrary:
         
         Note: The search will be performed on the service cache so `Get Services` or `Import Results` must have been run prior to calling this keyword
         If there is more than one IPv4 address matching with the MAC address, an exception will be raised (unlikely except if there is an IP address update in the middle of `Get Services`)
+        
+        In order to use this keyword, you will need to request IP to MAC address resolution (6th argument of Get Services)
         
         Return the IPv6 address or None if the service was not found.
         
@@ -1114,6 +1150,7 @@ if __name__ == '__main__':
     #if 'fe80::21a:64ff:fe94:86a2' != BL.get_ipv6_for_mac(MAC):
     #    raise Exception('Error')
     BL.expect_service_on_ip(IP)
+    BL.expect_service_on_mac(MAC)
     BL.import_results([])  # Make sure we reset the internal DB
     BL.expect_no_service_on_ip(IP)  # So there should be no service of course!
     BL.import_results(temp_cache)  # Re-import previous results
@@ -1124,5 +1161,6 @@ if __name__ == '__main__':
     BL.wait_for_no_service_name(exp_service, timeout=20, service_type = '_http._tcp', interface_name='eth1')
     BL.get_services(service_type='_http._tcp', interface_name='eth1')
     BL.expect_no_service_on_ip(IP)
+    BL.expect_no_service_on_mac(MAC)
 else:
     from robot.api import logger

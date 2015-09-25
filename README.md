@@ -104,6 +104,34 @@ service cache.
 To make sure you restrict to IPv4 or IPv6, filter IP types when running 
 `Get Services`
 
+#### `Expect Service On MAC`
+
+*Test if at lease one service exists on a device with a specific MAC address*
+
+Note: the search will be performed on the service cache so `Get Services` or 
+`Import Results` must have been run prior to calling this keyword
+
+Also this means that this keyword will perform not perform the check for service
+right now but rather at the time the last `Get Services` updated the internal
+service cache.
+
+In order to use this keyword, you will need to request IP to MAC address 
+resolution (6th argument of Get Services)
+
+#### `Expect No Service On MAC`
+
+*Test if a service is absent from a device with the specific MAC address*
+
+Note: the search will be performed on the service cache so `Get Services` or 
+`Import Results` must have been run prior to calling this keyword
+
+Also this means that this keyword will perform not perform the check for service
+right now but rather at the time the last `Get Services` updated the internal
+service cache.
+
+In order to use this keyword, you will need to request IP to MAC address 
+resolution (6th argument of Get Services)
+
 #### `Wait For Service Name`
 
 *Wait (until a timeout) for a service to be published (selection by name)*
@@ -159,6 +187,9 @@ specific MAC address... will obviously have MAC resolution on results*
 
 Note: this will have the side effect of changing the current database results 
 from `Get Services` (used by other keywords)
+
+In order to use this keyword, you will need to request IP to MAC address 
+resolution (6th argument of Get Services)
 
 #### `Get IPv4 For MAC`
 
@@ -243,34 +274,34 @@ Will raise an exception of the list is not correctly formatted
 
 This lists keywords that might be implemented in the future if required:
 
-* `Clear Results`
-  
-  *Empty a result cache as set by `Get Services` or `Import Results`*
+#### `Clear Results`
 
-* `Wait For Bonjour On IP`
-  
-  *Wait for a device to publish at least one service*
+*Empty a result cache as set by `Get Services` or `Import Results`*
 
-* `Wait For No Bonjour On IP`
-  
-  *Wait for a device to stop publish any service*
+#### `Wait For Bonjour On IP`
 
-* `Wait For Bonjour On MAC`
-  
-  *Wait for a device to publish at least one service*
+*Wait for a device to publish at least one service*
 
-* `Wait For No Bonjour On MAC`
-  
-  *Wait for a device to stop publish any service*
+#### `Wait For No Bonjour On IP`
 
-* `Details For Service Name`
-  
-  *Get the whole service details (tuple) based on a service name (and 
-  optionally a a host specified by either its MAC address of IP address)*
+*Wait for a device to stop publish any service*
 
-* `Details For Service Type`
-  
-  *Get the whole service details (tuple) based on a service type (and 
-  optionally a port (recommended) and optionnally a host specified by either 
-  its MAC address of IP address)*
+#### `Wait For Bonjour On MAC`
+
+*Wait for a device to publish at least one service*
+
+#### `Wait For No Bonjour On MAC`
+
+*Wait for a device to stop publish any service*
+
+#### `Details For Service Name`
+
+*Get the whole service details (tuple) based on a service name (and 
+optionally a host specified by either its MAC address of IP address)*
+
+#### `Details For Service Type`
+
+*Get the whole service details (tuple) based on a service type (and 
+optionally a port (recommended) and optionnally a host specified by either 
+its MAC address of IP address)*
 
