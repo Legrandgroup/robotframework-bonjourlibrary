@@ -53,7 +53,7 @@ def guess_ip_version(ip_string):
 """Global variable required for function arping() below"""
 arping_supports_r_i = True
 
-def arping(ip_address, interface=None, use_sudo = True):
+def arping(ip_address, interface=None, use_sudo = True, logger = None):
     """Run arping and returns a list of MAC addresses matching with the IP address provided in \p ip_address (or an empty list if there was no reply)
     
     \param ip_address The IPv4 to probe
@@ -66,7 +66,8 @@ def arping(ip_address, interface=None, use_sudo = True):
     global arping_supports_r_i
     
     if guess_ip_version(str(ip_address)) != 4: # We have an IPv4 address
-        logger.error('Arping: bad IPv4 format: ' + str(ip_address))
+        if logger is not None:
+            logger.error('Arping: bad IPv4 format: ' + str(ip_address))
         raise Exception('BadIPv4Format')
     
     if use_sudo:
@@ -124,7 +125,8 @@ def arping(ip_address, interface=None, use_sudo = True):
         if not arping_mac_addr is None:
             if not arping_ip_addr is None:
                 if arping_ip_addr != str(ip_address):
-                    logger.warning('Got a mismatch on IP address reply from arping: Expected ' + str(ip_address) + ', got ' + arping_ip_addr)
+                    if logger is not None:
+                        logger.warning('Got a mismatch on IP address reply from arping: Expected ' + str(ip_address) + ', got ' + arping_ip_addr)
             result+=[arping_mac_addr]
         
         exitvalue = proc.wait()
@@ -425,7 +427,7 @@ value:%s
             bonjour_service.mac_address = None
             if protocol == 'ipv4':
                 try:
-                    mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=self.use_sudo_for_arping)
+                    mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=self.use_sudo_for_arping, logger=logger)
                     if len(mac_address_list) != 0:
                         if len(mac_address_list) > 1:  # More than one MAC address... issue a warning
                             logger.warning('Got more than one MAC address for IP address ' + str(bonjour_service.ip_address) + ': ' + str(mac_address_list) + '. Using first')
@@ -1138,7 +1140,7 @@ if __name__ == '__main__':
         MAC = 'C4:93:00:02:CA:10'
         exp_service = 'Wifi_wifi-soho_02CA10'
     
-    #print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True)))
+    #print('Arping result: ' + str(arping(ip_address='10.10.8.1', interface='eth0', use_sudo=True, logger=logger)))
     AVAHI_BROWSER = 'avahi-browse'
     BL = BonjourLibrary('local', AVAHI_BROWSER)
     input('Press enter & "Enable Bonjour" on device')
