@@ -11,6 +11,21 @@ import subprocess
 
 import threading
 
+if __name__ != '__main__':
+    from robot.api import logger
+else:
+    try:
+        from console_logger import LOGGER as logger
+    except ImportError:
+        import logging
+
+        logger = logging.getLogger('console_logger')
+        logger.setLevel(logging.DEBUG)
+        
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+
 def guess_ip_version(ip_string):
     """ Guess the version of an IP address, check its validity
     \param ip_string A string containing an IP address
@@ -67,7 +82,7 @@ def arping(ip_address, interface=None, use_sudo = True, logger = None):
     
     if guess_ip_version(str(ip_address)) != 4: # We have an IPv4 address
         if logger is not None:
-            logger.error('Arping: bad IPv4 format: ' + str(ip_address))
+            logger.warn('Arping: bad IPv4 format: ' + str(ip_address))
         raise Exception('BadIPv4Format')
     
     if use_sudo:
@@ -126,7 +141,7 @@ def arping(ip_address, interface=None, use_sudo = True, logger = None):
             if not arping_ip_addr is None:
                 if arping_ip_addr != str(ip_address):
                     if logger is not None:
-                        logger.warning('Got a mismatch on IP address reply from arping: Expected ' + str(ip_address) + ', got ' + arping_ip_addr)
+                        logger.warn('Got a mismatch on IP address reply from arping: Expected ' + str(ip_address) + ', got ' + arping_ip_addr)
             result+=[arping_mac_addr]
         
         exitvalue = proc.wait()
@@ -430,17 +445,17 @@ value:%s
                     mac_address_list = arping(bonjour_service.ip_address, interface=interface_osname, use_sudo=self.use_sudo_for_arping, logger=logger)
                     if len(mac_address_list) != 0:
                         if len(mac_address_list) > 1:  # More than one MAC address... issue a warning
-                            logger.warning('Got more than one MAC address for IP address ' + str(bonjour_service.ip_address) + ': ' + str(mac_address_list) + '. Using first')
+                            logger.warn('Got more than one MAC address for IP address ' + str(bonjour_service.ip_address) + ': ' + str(mac_address_list) + '. Using first')
                         bonjour_service.mac_address = mac_address_list[0]
                 except Exception as e:
                     if e.message != 'ArpingSubprocessFailed':   # If we got an exception related to anything else than arping subprocess...
                         raise   # Raise the exception
                     else:
-                        logger.warning('Arping failed for IP address ' + str(bonjour_service.ip_address) + '. Continuing anyway but MAC address will remain set to None')
+                        logger.warn('Arping failed for IP address ' + str(bonjour_service.ip_address) + '. Continuing anyway but MAC address will remain set to None')
                         # Otherwise, we will just not resolve the IP address into a MAC... too bad, but maybe not that blocking
                         # Note: this always happens when avahi-browse was launched without -l (in that cas, it might report local services, but the local IP address will not be resolved by arping as there is noone (else than us) to reply on the network interface 
             else:
-                logger.warning('Cannot resolve IPv6 ' + bonjour_service.ip_address + ' to MAC address (function not implemented yet)')
+                logger.warn('Cannot resolve IPv6 ' + bonjour_service.ip_address + ' to MAC address (function not implemented yet)')
                 
         self._database[key] = bonjour_service
 
@@ -541,7 +556,7 @@ value:%s
                 flags = bonjour_service.flags
                 mac_address = bonjour_service.mac_address
             else:
-                logger.warning('Exporting a non resolved entry for service "' + str(name) + '" of type ' + str(stype))
+                logger.warn('Exporting a non resolved entry for service "' + str(name) + '" of type ' + str(stype))
                 hostname = None
                 ip_address = None
                 port = None
@@ -822,7 +837,7 @@ class BonjourLibrary:
             msg = 'Did not get expected service'
             if not timeout is None:
                 msg += ' after waiting ' + str(timeout) + 's'
-            logger.warning(msg)
+            logger.warn(msg)
             raise Exception('ServiceNotFound:' + str(service_name))
 
         p.wait()    # Wait until the avahi-browse command finishes
@@ -926,7 +941,7 @@ class BonjourLibrary:
             msg = 'Expected service was not withdrawn'
             if not timeout is None:
                 msg += ' after waiting ' + str(timeout) + 's'
-            logger.warning(msg)
+            logger.warn(msg)
             raise Exception('ServiceFound:' + str(service_name))
 
         p.wait()    # Wait until the avahi-browse command finishes
@@ -1114,18 +1129,6 @@ class BonjourLibrary:
         
 if __name__ == '__main__':
     try:
-        from console_logger import LOGGER as logger
-    except ImportError:
-        import logging
-
-    logger = logging.getLogger('console_logger')
-    logger.setLevel(logging.DEBUG)
-    
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logger.addHandler(handler)
-
-    try:
         input = raw_input
     except NameError:
         pass
@@ -1164,5 +1167,3 @@ if __name__ == '__main__':
     BL.get_services(service_type='_http._tcp', interface_name='eth1')
     BL.expect_no_service_on_ip(IP)
     BL.expect_no_service_on_mac(MAC)
-else:
-    from robot.api import logger
