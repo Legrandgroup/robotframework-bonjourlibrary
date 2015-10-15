@@ -900,8 +900,7 @@ class BonjourLibrary:
             #print('Getting new event ' + event.event + ' for service name ' + str(event.sname))
             if event.sname == _subthread_env.expected_service_name:
                 # Got an event for the service we are watching... check it exists or is added (not deleted)
-                if (event.event == 'resolve') or
-                   (not _subthread_env.resolved_services_only and event.event == 'add'): # The service is considered currently on (according to the _subthread_env.expected_service_name policy), this is what we expected
+                if (event.event == 'resolve') or (not _subthread_env.resolved_services_only and event.event == 'add'): # The service is considered currently on (according to the _subthread_env.expected_service_name policy), this is what we expected
                     _subthread_env.current_nb_services_match += 1
                     #print(event.event + ' received. Count on expected service is now ' + str(_subthread_env.current_nb_services_match))
                 if event.event == 'del':
