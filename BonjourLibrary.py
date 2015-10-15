@@ -535,8 +535,10 @@ value:%s
                     logger.debug('Removing non-required MAC address "' + mac_address + "' from database")
                     del self._database[key]
     
-    def export_to_tuple_list(self):
+    def export_to_tuple_list(self, resolved_services_only = False):
         """\brief Export this database to a list of tuples (so that it can be processed by RobotFramework keywords)
+        
+        \param resolved_services_only Only export resolved services, not unresolved entries that may have been discovered from the cache
         
         \return A list of tuples containing (interface, protocol, name, stype, domain, hostname, ip_address, sport, txt, flags, mac_address)
         """
@@ -555,15 +557,13 @@ value:%s
                 txt = bonjour_service.txt
                 flags = bonjour_service.flags
                 mac_address = bonjour_service.mac_address
+                export += [(interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)]
             else:
-                logger.warn('Exporting a non resolved entry for service "' + str(name) + '" of type ' + str(stype))
-                hostname = None
-                ip_address = None
-                port = None
-                txt = None
-                flags = None
-                mac_address = None
-            export += [(interface_osname, protocol, name, stype, domain, hostname, ip_address, port, txt, flags, mac_address)]
+                if not resolved_services_only:
+                    logger.warn('Exporting a non resolved entry for service "' + str(name) + '" of type ' + str(stype))
+                    export += [(interface_osname, protocol, name, stype, domain, None, None, None, None, None, None)]
+                else:
+                    logger.debug('Skipping non resolved entry for service "' + str(name) + '" of type ' + str(stype))
         
         return export
         
