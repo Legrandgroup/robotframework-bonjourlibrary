@@ -924,7 +924,7 @@ class BonjourLibrary:
         # Now perform a second pass but keeping getting updated of changes (removing -t option)
         p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
         
-        _subthread_env = SubThreadEnv(expected_service_name = service_name) # We start again from scratch (we will to discover a second time the related services, so reset to not count them twice)
+        _subthread_env = SubThreadEnv(expected_service_name = service_name, resolved_services_only = resolved_services_only) # We start again from scratch (we will to discover a second time the related services, so reset to not count them twice)
         
         def db_update_bg_thread():
             """\brief Run _parse_avahi_browse_output() (aimed to be run in a secondary thread)
