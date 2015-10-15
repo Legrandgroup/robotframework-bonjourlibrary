@@ -207,7 +207,7 @@ class AvahiBrowseServiceEvent:
         self.sname The human-friendy name of the service as displayed by Bonjour browsing utilities, as a string
         self.stype The service type following Bonjour's convention, eg '_http._tcp'
         self.domain The domain on which the service was discovered, eg 'local'
-        self.event The type of avahi-browse event processed ('add' (+), 'update' (=) or 'del' (-))
+        self.event The type of avahi-browse event processed ('add' (+), 'resolve' (=) or 'del' (-))
         self.hostname The hostname of the device publishing the service (eg: blabla.local)
         self.ip_addr The IP address of the device publishing the service (eg: '192.168.0.1' or 'fe80::1')
         self.sport The TCP or UDP port on which the service is running (eg: 80)
@@ -240,7 +240,7 @@ class AvahiBrowseServiceEvent:
             self.txt = entry_array[9]
             #~ self.txt = unicode(self.txt, 'utf-8')	# Not needed because avahi-browse already outputs UTF-8 text
             self.txt_missing_end = not AvahiBrowseServiceEvent.isClosedString(self.txt)
-            self.event = 'update'
+            self.event = 'resolve'
         elif type == '+':   # '+' means add so there is no service resolution available yet
             self.hostname = None
             self.ip_addr = None
@@ -349,7 +349,7 @@ class AvahiBrowseServiceEvent:
     def __repr__(self):
         if self.event == 'add':
             output = '+'
-        elif self.event == 'update':
+        elif self.event == 'resolve':
             output = '!'
         elif self.event == 'del':
             output = '-'
@@ -482,7 +482,7 @@ value:%s
         if avahi_event.event == 'add':
             # With add events, we don't have any information about the service yet (it is not resolved)
             self.add(key, None)
-        elif avahi_event.event == 'update':
+        elif avahi_event.event == 'resolve':
             bonjour_service = BonjourService(avahi_event.hostname, avahi_event.ip_addr, avahi_event.sport, avahi_event.txt, 0, mac_address = None)
             #logger.debug('Will process update event on service ' + str(bonjour_service))
             self.add(key, bonjour_service)
@@ -805,7 +805,7 @@ class BonjourLibrary:
                     #print(event.event + ' received on expected service instance #' + str(_subthread_env.nb_services_match_seen))
                     _subthread_env.nb_services_match_seen += 1
                     _subthread_env.searched_service_found.set()
-                if event.event == 'update':
+                if event.event == 'resolve':
                     #print(event.event + ' received on expected service instance #' + str(_subthread_env.nb_services_match_resolved))
                     _subthread_env.nb_services_match_resolved += 1
                     #print('Comparing ' + str(_subthread_env.nb_services_match_resolved) + ' >= ' + str(_subthread_env.nb_services_match_seen))
@@ -1133,7 +1133,7 @@ if __name__ == '__main__':
     except NameError:
         pass
 
-    host = 'hal'
+    host = 'hal2'
     if host=='hal':
         IP = '169.254.2.35'
         MAC = '00:04:74:12:00:00'
