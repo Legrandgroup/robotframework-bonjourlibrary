@@ -55,6 +55,9 @@ all valid network interfaces)
 `ipv6`, or `ipv4`, the default values being any IP version)
 * If the fourth (optional) argument is set to True, we will also include the 
 MAC address of devices in results (default value is to resolve IP addresses)
+* If the fifth (optional) argument is set to True, we will only return services 
+that are resolved (existing currently on the network). This will skip services 
+only found in cache
 
 Return a list of services found on the network
 
@@ -148,7 +151,10 @@ resolution (6th argument of Get Services)
   `ipv6`, or `ipv4`, the default values being any IP version)
 * If the sixth (optional) argument is set to True, we will also include the MAC 
   address of devices in results (default value is to resolve IP addresses)
-        
+* If the seventh (optional) argument is set to True, we will only return 
+services that are resolved (existing currently on the network). This will skip 
+services only found in cache
+
 Return the list of matching services found on the network (one entry per 
 service, each service being described by tuples containing formatted like for 
 keyword `Get Services`).
@@ -168,6 +174,8 @@ name)*
 If the service does not exist when running this keyword, it will immediately 
 return, otherwise, it will wait at most timeout (if provided) for the service 
 to be withdrawn or will block forever (not recommended)
+
+All options are identical to the keyword `Wait For Service Name`
 
 After running this keyword, the internal database will be updated with the 
 services remaining (filtered according to arguments (IPv4/IPv6, type etc...)
