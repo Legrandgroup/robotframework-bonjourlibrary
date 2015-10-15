@@ -739,7 +739,7 @@ class BonjourLibrary:
         else:
             service_type_arg = '-a'
 
-        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
+        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))
         self._parse_avahi_browse_output(avahi_browse_process=p, interface_name_filter=interface_name, ip_type_filter=ip_type)
         
         with self._service_database_mutex:
@@ -790,7 +790,7 @@ class BonjourLibrary:
                 self.resolved_services_only = resolved_services_only    # Shall we only consider only services that are resolved
         
         #print('Running command ' + str([self._avahi_browse_exec_path, '-p', '-r', '-l,' service_type_arg]))
-        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
+        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))
         
         _subthread_env = SubThreadEnv(expected_service_name = service_name, resolved_services_only = resolved_services_only)
         
@@ -912,7 +912,7 @@ class BonjourLibrary:
                         _subthread_env.all_searched_service_withdrawn.set()
         
         # Perform a first pass to check if there is one service matching what is expected
-        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE)
+        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', '-t', service_type_arg], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))
         
         _subthread_env = SubThreadEnv(expected_service_name = service_name, resolved_services_only = resolved_services_only)
 
@@ -922,7 +922,7 @@ class BonjourLibrary:
             return
         
         # Now perform a second pass but keeping getting updated of changes (removing -t option)
-        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE)
+        p = subprocess.Popen([self._avahi_browse_exec_path, '-p', '-r', '-l', service_type_arg], stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))
         
         _subthread_env = SubThreadEnv(expected_service_name = service_name, resolved_services_only = resolved_services_only) # We start again from scratch (we will to discover a second time the related services, so reset to not count them twice)
         
