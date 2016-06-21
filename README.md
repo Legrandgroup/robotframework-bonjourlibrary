@@ -36,6 +36,15 @@ This library requires the following executables to be accessible:
 To install this libary, run the `./setup.py install` command locate inside the
 repository.
 
+You will probably want to disable avahi-daemon's caching for mDNS entries by
+adding the following line in your `avahi-daemon.conf` file:
+```
+cache-entries-max=0
+```
+
+This will proove useful especially if you're regularly changing the DUT's
+announcements during the execution of tests.
+
 ### Robot Framework keywords
 
 The following RobotFramework keywords are made available by this library:
