@@ -103,6 +103,7 @@ def arping(ip_address, interface=None, use_sudo = True, logger = None):
             result+=[line.rstrip()]
 
         exitvalue = proc.wait()
+        #print('Result for arping:"' + str(result) + '"')
         if exitvalue == 0:
             return result
         else:
@@ -114,7 +115,7 @@ def arping(ip_address, interface=None, use_sudo = True, logger = None):
         if not interface is None:
             arping_cmd += ['-I', str(interface)]
         arping_cmd += [str(ip_address)]
-        #print(arping_cmd)
+        #print('Running command: ' + str(arping_cmd))
         proc = subprocess.Popen(arping_cmd, stdout=subprocess.PIPE, stderr=open(os.devnull, 'wb'))  # We also hide stderr here because sudo may complain when it cannot resolve the local machine's hostname
         result=[]
         arping_header_regexp = re.compile(r'^ARPING')
@@ -126,6 +127,7 @@ def arping(ip_address, interface=None, use_sudo = True, logger = None):
             line = line.rstrip()
             #print('arping:"' + str(line) + '"')
             if not re.match(arping_header_regexp, line):    # Skip the header from arping
+                #print('Trying to match line: "' + str(line) + '"')
                 match = re.match(arp_reply_template1_regexp, line)
                 if match:
                     arping_ip_addr = match.group(1)
@@ -136,7 +138,11 @@ def arping(ip_address, interface=None, use_sudo = True, logger = None):
                     arping_ip_addr = match.group(2)
                     arping_mac_addr = match.group(1)
                     break
-            
+                if logger is not None:
+                    logger.debug('Got no MAC address match on arping line "' + str(line= + '"'))
+        
+        if logger is not None:
+            logger.debug('Arping returned: arping_mac_addr=' + str(arping_mac_addr) + ' for arping_ip_addr=' + str(arping_ip_addr))
         if not arping_mac_addr is None:
             if not arping_ip_addr is None:
                 if arping_ip_addr != str(ip_address):
